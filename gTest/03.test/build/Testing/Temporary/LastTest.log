@@ -1,0 +1,40 @@
+Start testing: Dec 13 23:49 CST
+----------------------------------------------------------
+1/1 Testing: test_add
+1/1 Test: test_add
+Command: "/home/will/lesson/gTest/03.test/build/test_add"
+Directory: /home/will/lesson/gTest/03.test/build
+"test_add" start time: Dec 13 23:49 CST
+Output:
+----------------------------------------------------------
+[==========] Running 2 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 2 tests from AddTest
+[ RUN      ] AddTest.cast1
+AddTest
+SetUp
+case1: 
+TearDown
+~AddTest
+[       OK ] AddTest.cast1 (0 ms)
+[ RUN      ] AddTest.cast2
+AddTest
+SetUp
+case2: 
+TearDown
+~AddTest
+[       OK ] AddTest.cast2 (0 ms)
+[----------] 2 tests from AddTest (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 2 tests from 1 test suite ran. (0 ms total)
+[  PASSED  ] 2 tests.
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_add" end time: Dec 13 23:49 CST
+"test_add" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Dec 13 23:49 CST

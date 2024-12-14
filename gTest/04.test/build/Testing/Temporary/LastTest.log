@@ -1,0 +1,44 @@
+Start testing: Dec 14 20:26 CST
+----------------------------------------------------------
+2/2 Testing: StructTest
+2/2 Test: StructTest
+Command: "/home/will/lesson/gTest/04.test/build/type_struct"
+Directory: /home/will/lesson/gTest/04.test/build
+"StructTest" start time: Dec 14 20:26 CST
+Output:
+----------------------------------------------------------
+Running main() from /home/will/lesson/gTest/googletest/googletest/src/gtest_main.cc
+[==========] Running 4 tests from 4 test suites.
+[----------] Global test environment set-up.
+[----------] 1 test from MyTypeTest/0, where TypeParam = int
+[ RUN      ] MyTypeTest/0.SizeTest
+[       OK ] MyTypeTest/0.SizeTest (0 ms)
+[----------] 1 test from MyTypeTest/0 (0 ms total)
+
+[----------] 1 test from MyTypeTest/1, where TypeParam = unsigned int
+[ RUN      ] MyTypeTest/1.SizeTest
+[       OK ] MyTypeTest/1.SizeTest (0 ms)
+[----------] 1 test from MyTypeTest/1 (0 ms total)
+
+[----------] 1 test from MyTypeTest/2, where TypeParam = int
+[ RUN      ] MyTypeTest/2.SizeTest
+[       OK ] MyTypeTest/2.SizeTest (0 ms)
+[----------] 1 test from MyTypeTest/2 (0 ms total)
+
+[----------] 1 test from MyTypeTest/3, where TypeParam = A
+[ RUN      ] MyTypeTest/3.SizeTest
+[       OK ] MyTypeTest/3.SizeTest (0 ms)
+[----------] 1 test from MyTypeTest/3 (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 4 tests from 4 test suites ran. (0 ms total)
+[  PASSED  ] 4 tests.
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"StructTest" end time: Dec 14 20:26 CST
+"StructTest" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Dec 14 20:26 CST

@@ -1,0 +1,1 @@
+/usr/bin/c++ CMakeFiles/type_struct.dir/type_struct_test.cpp.o -o type_struct  /usr/local/lib/libgtest.a /usr/local/lib/libgtest_main.a -lpthread 

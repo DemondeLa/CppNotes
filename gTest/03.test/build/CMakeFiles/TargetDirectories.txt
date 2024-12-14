@@ -1,0 +1,4 @@
+/home/will/lesson/gTest/03.test/build/CMakeFiles/test_add.dir
+/home/will/lesson/gTest/03.test/build/CMakeFiles/test.dir
+/home/will/lesson/gTest/03.test/build/CMakeFiles/edit_cache.dir
+/home/will/lesson/gTest/03.test/build/CMakeFiles/rebuild_cache.dir
