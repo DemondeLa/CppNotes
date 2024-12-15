@@ -473,7 +473,7 @@ Total Test time (real) =   0.00 sec
 
 
 
-### 四、测试宏
+### 四、类型测试
 
 `TYPED_TEST` 是一个用于创建类型化测试的宏，它允许你针对不同的数据类型写一组共同的测试。通过 `TYPED_TEST`，你可以定义一个测试模板，这个模板可以在多个不同类型上执行同样的测试，而不需要为每个类型重复编写测试代码。它主要用于测试模板类或者模板函数时，自动生成针对不同类型的测试。
 
@@ -670,4 +670,221 @@ Total Test time (real) =   0.00 sec
 ```
 
 
+
+### 五、类型参数化测试
+
+顾名思义，就是将之前讲过的的参数化测试和类型测试结合起来
+
+在 Google Test 中，**类型参数化测试**（Type-Parameterized Tests）是一种通过使用模板类型参数来进行测试的技术。它允许你编写同一测试逻辑，但针对不同的数据类型或类进行测试，从而避免重复代码，提高测试的复用性和覆盖面。
+
+可以定义一个测试用例模板，该模板针对一个类型列表执行测试，这样可以在一个测试中对多个类型进行验证，而无需为每个类型写独立的测试用例。
+
+场景：假设有两个模板函数，需要对这两个函数进行测试，分别使用不同的数据类型。如果只用类型测试，则需要进行两次实例化，而结合参数化测试，则只需要实例化一次即可
+
+即，对于多个测试需要的类型场景完全一样，就可以把类型进行参数化，只定义一次类型参数实例化的过程，就可以将多个类型分别应用于这多个测试用例
+
+```cpp
+#include "func.h"
+#include <gtest/gtest.h>
+#include <gtest/gtest-typed-test.h>
+
+// 1. 定义模板类
+template <typename T>
+class TypedTestClass : public ::testing::Test{};
+
+// 2. 定义参数化测试套件
+TYPED_TEST_SUITE_P(TypedTestClass);
+// 定义了一个类型参数化的测试套件,让测试套件支持参数化, TypedTestClass 是测试夹具类的名称
+
+// 3. 测试用例场景
+TYPED_TEST_P(TypedTestClass, AddTest) {
+    TypeParam a = 1;
+    TypeParam b = 2;
+    EXPECT_EQ(a + b, 3);
+}
+// 这两个个测试将会根据不同类型的 TypeParam 进行多次实例化
+TYPED_TEST_P(TypedTestClass, SubTest) {
+    TypeParam a = 6;
+    TypeParam b = 2;
+    EXPECT_EQ(a - b, 4);
+}
+
+// 4. 注册测试
+REGISTER_TYPED_TEST_SUITE_P(TypedTestClass, AddTest, SubTest);
+// 注册了测试用例 AddTest 和 SubTest，并将它们与 TypedTestClass 测试夹具关联起来
+
+// 5. 实例化
+using MyTypeClass = ::testing::Types<int, float, long, double>;
+// 实例化了 TypedTestClass 测试夹具
+INSTANTIATE_TYPED_TEST_SUITE_P(MyPrefix, TypedTestClass, MyTypeClass);
+// 使用 MyTypeClass 中定义的类型列表来创建不同类型的测试用例实例
+```
+
+其中，模板类 `TypedTestClass`，它继承自 `::testing::Test`，这是所有 Google Test 测试夹具（Fixture）类的基类。同时，通过模板类型 `T`，可以根据不同的数据类型创建多个测试实例
+
+`TYPED_TEST_SUITE_P` 宏用于标记一个测试套件，表示该套件是针对不同类型的参数进行测试的。
+
+`TYPED_TEST_P` 宏定义了一个类型参数化的测试用例，其参数分别是`TypedTestClass`的测试夹具，以及`AddTest`的测试用例。在测试用例中，测试夹具`TypedTestClass`的模板参数 `TypeParam` 表示当前测试实例的类型
+
+在使用`REGISTER_TYPED_TEST_SUITE_P`将测试用例与测试夹具关联后，Google Test 会为每个类型参数生成这些测试用例的实例
+
+`::testing::Types` 是一个模板类，它允许我们指定一个类型列表。Google Test 将为这些类型生成相应的测试用例实例。
+
+`INSTANTIATE_TYPED_TEST_SUITE_P` 使得测试框架为指定类型生成相应的测试用例。其中，`MyPrefix` 是测试套件实例的前缀，它将用于生成测试套件的名称。在上面的代码中，具体的测试名称会是 `MyPrefix<int>`、`MyPrefix<float>` 等
+
+PS：由于没有写google test的入口函数，记得写`main()`函数
+
+运行后可以看到，两个用例都测试了实例化的多个类型，进行了类型和用例正交的测试
+
+```bash
+$ ./type_test 
+[==========] Running 8 tests from 4 test suites.
+[----------] Global test environment set-up.
+[----------] 2 tests from MyPrefix/TypedTestClass/0, where TypeParam = int
+[ RUN      ] MyPrefix/TypedTestClass/0.AddTest
+[       OK ] MyPrefix/TypedTestClass/0.AddTest (0 ms)
+[ RUN      ] MyPrefix/TypedTestClass/0.SubTest
+[       OK ] MyPrefix/TypedTestClass/0.SubTest (0 ms)
+[----------] 2 tests from MyPrefix/TypedTestClass/0 (0 ms total)
+
+[----------] 2 tests from MyPrefix/TypedTestClass/1, where TypeParam = float
+[ RUN      ] MyPrefix/TypedTestClass/1.AddTest
+[       OK ] MyPrefix/TypedTestClass/1.AddTest (0 ms)
+[ RUN      ] MyPrefix/TypedTestClass/1.SubTest
+[       OK ] MyPrefix/TypedTestClass/1.SubTest (0 ms)
+[----------] 2 tests from MyPrefix/TypedTestClass/1 (0 ms total)
+
+[----------] 2 tests from MyPrefix/TypedTestClass/2, where TypeParam = long
+[ RUN      ] MyPrefix/TypedTestClass/2.AddTest
+[       OK ] MyPrefix/TypedTestClass/2.AddTest (0 ms)
+[ RUN      ] MyPrefix/TypedTestClass/2.SubTest
+[       OK ] MyPrefix/TypedTestClass/2.SubTest (0 ms)
+[----------] 2 tests from MyPrefix/TypedTestClass/2 (0 ms total)
+
+[----------] 2 tests from MyPrefix/TypedTestClass/3, where TypeParam = double
+[ RUN      ] MyPrefix/TypedTestClass/3.AddTest
+[       OK ] MyPrefix/TypedTestClass/3.AddTest (0 ms)
+[ RUN      ] MyPrefix/TypedTestClass/3.SubTest
+[       OK ] MyPrefix/TypedTestClass/3.SubTest (0 ms)
+[----------] 2 tests from MyPrefix/TypedTestClass/3 (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 8 tests from 4 test suites ran. (0 ms total)
+[  PASSED  ] 8 tests.
+
+$ ctest
+Test project /home/will/lesson/gTest/05.test/build
+    Start 1: TypeTest
+1/1 Test #1: TypeTest .........................   Passed    0.00 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Total Test time (real) =   0.01 sec
+```
+
+当不同的测试用例需要使用相同的类型进行实例化的时候，就可以使用类型参数化测试
+
+
+
+### 六、测试跟踪
+
+在执行测试时，希望在失败的时候，输出更多的信息。此时，就可以在测试用例中插入`SCOPED_TRACE`宏，更像是log，会把当前的文件行号都打印出来，还可以添加自定义信息，从而更好的分析错误
+
+程序流程：
+
+1. **定义 `add` 函数**：该函数实现了加法功能。
+2. **定义参数化测试类**：`TestAdd` 类从 `::testing::TestWithParam<std::tuple<int, int, int>>` 派生，表示每个测试用例将接受一个元组作为输入。
+3. **定义参数化测试用例 `Add`**：使用 `TEST_P` 宏定义了测试用例 `Add`，它从 `TestAdd` 类继承，获取测试参数，并使用 `ASSERT_EQ` 进行加法结果验证。
+4. **实例化测试用例**：使用 `INSTANTIATE_TEST_SUITE_P` 定义了不同的测试数据，创建多个不同的测试实例。
+5. **运行测试**：在 `main` 函数中，调用 `RUN_ALL_TESTS()` 执行所有测试，输出测试结果。
+
+```cpp
+#include <gtest/gtest.h>
+#include <gtest/gtest-param-test.h>
+#include <iostream>
+#include <string>
+#include <tuple>
+
+int add(int a, int b) {
+    return a + b;
+}
+
+class TestAdd : public ::testing::TestWithParam<std::tuple<int, int, int>> {};
+
+TEST_P(TestAdd, Add) {
+    auto param = GetParam();
+    SCOPED_TRACE("add(" + std::to_string(std::get<0>(param)) +
+                 ", " + std::to_string(std::get<1>(param)) + 
+                 ") = " + std::to_string(std::get<2>(param)));
+    ASSERT_EQ(add(std::get<0>(param), std::get<1>(param)), std::get<2>(param));
+}
+
+INSTANTIATE_TEST_SUITE_P(Add, TestAdd, ::testing::Values(
+                        std::make_tuple(1, 2, 3),
+                        std::make_tuple(2, 3, 5),
+                        std::make_tuple(4, 9, 12),
+                        std::make_tuple(4, 9, 13)));
+
+int main(int argc, char **argv) {
+    ::testing::InitGoogleTest(&argc, argv);
+    return RUN_ALL_TESTS();
+}
+```
+
+`TestWithParam`是 Google Test 提供的一个模板类，它允许你为每个测试提供一组参数。在这里，`TestAdd`继承自`TestWithParam<std::tuple<int, int, int>>`，表示每个测试将接受一个包含 3 个整数的`tuple`类型的参数。
+
+- 第一个整数：`a`，即加法运算的第一个数。
+- 第二个整数：`b`，即加法运算的第二个数。
+- 第三个整数：`expected result`，即 `a + b` 的预期结果。
+
+`TEST_P` 是 Google Test 中用于定义参数化测试的宏。它定义了一个名为 `Add` 的测试用例，依赖于 `TestAdd` 类。
+
+`GetParam()` 是 `TestWithParam` 类提供的方法，它返回当前测试的参数。在这个例子中，返回的参数是一个 `std::tuple<int, int, int>` 类型的元组。
+
+`SCOPED_TRACE` 用于为每个测试添加额外的调试信息，它会在测试失败时显示详细的错误信息，帮助开发者理解具体的参数值。例如，输出类似 `"add(1, 2) = 3"`。
+
+- `std::get<0>(param)` 获取元组的第一个元素（即加法的第一个参数 `a`）。
+
+`INSTANTIATE_TEST_SUITE_P` 用于实例化测试套件
+
+- 第一个参数 `Add` 是实例化后的测试套件的名称。
+- 第二个参数 `TestAdd` 是要实例化的测试类。
+- 第三个参数是`::testing::Values`，它定义了测试用例的输入值。这里使用了`std::make_tuple`来创建一个`std::tuple<int, int, int>`类型的参数列表。
+    - 每个 `std::make_tuple(a, b, expected_result)` 都是一个测试实例，其中 `a` 和 `b` 是加数，`expected_result` 是期望的加法结果。
+    - 例如，`std::make_tuple(1, 2, 3)` 表示对 `1 + 2` 进行测试，期望结果是 `3`。
+    - 最后一组 `std::make_tuple(4, 9, 13)` 显然是一个错误的测试用例，因为 `4 + 9` 应该等于 `13`，但期望结果是 `13`。这意味着这个测试会失败，可能是为了测试断言失败的情况。
+
+执行结果如下，比起默认的失败信息，还给出了文件名、错误的行号以及对应的测试数据
+
+```bash
+[==========] Running 4 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 4 tests from Add/TestAdd
+[ RUN      ] Add/TestAdd.Add/0
+[       OK ] Add/TestAdd.Add/0 (0 ms)
+[ RUN      ] Add/TestAdd.Add/1
+[       OK ] Add/TestAdd.Add/1 (0 ms)
+[ RUN      ] Add/TestAdd.Add/2
+/home/will/lesson/gTest/06.test/scoped_trace.cpp:18: Failure
+Expected equality of these values:
+  add(std::get<0>(param), std::get<1>(param))
+    Which is: 13
+  std::get<2>(param)
+    Which is: 12
+Google Test trace:
+/home/will/lesson/gTest/06.test/scoped_trace.cpp:15: add(4, 9) = 12
+
+[  FAILED  ] Add/TestAdd.Add/2, where GetParam() = (4, 9, 12) (0 ms)
+[ RUN      ] Add/TestAdd.Add/3
+[       OK ] Add/TestAdd.Add/3 (0 ms)
+[----------] 4 tests from Add/TestAdd (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 4 tests from 1 test suite ran. (0 ms total)
+[  PASSED  ] 3 tests.
+[  FAILED  ] 1 test, listed below:
+[  FAILED  ] Add/TestAdd.Add/2, where GetParam() = (4, 9, 12)
+
+ 1 FAILED TEST
+```
 
