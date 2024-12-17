@@ -1104,6 +1104,8 @@ Skipping this test
     - `::testing::Ge(0)`：大于 0。
     - `::testing::Lt(10)`：小于 10。
 
+注意，`matcher`是定义在`gmock.h`中的，而不是在`gtest-matchers.h`中，如果没有包含`gmock.h`是不能编译通过的，会找不到匹配器的相关的宏
+
 ```cpp
 std::string Hello() {
     return "Hello World" + std::to_string(rand());
@@ -1174,3 +1176,53 @@ Repeating all tests (iteration 100) . . .
 ```
 
 更多的匹配器，可以查看官方文档中https://google.github.io/googletest/reference/matchers.html，里面介绍的匹配器
+
+同时它也支持用户自定义mather（==Defining Matchers==），定义之后，也可以放在`EXPECT_THAT`中使用
+
+
+
+### 十、异常断言
+
+如果存在一个函数，在某些条件下，会抛出异常。google test中也有专门的宏用于测试这种情况
+
+```cpp
+int throw_func(int a) {
+    if (a == 0)
+        throw "the number is 0";
+    return 0;
+}
+
+TEST(ExpectThrowTest, ExpectThrow) {
+    EXPECT_THROW(throw_func(0), const char *); // not string
+}
+
+TEST(ExpectThrowTest, ExpectNoThrow) {
+    EXPECT_NO_THROW(throw_func(1));
+}
+
+TEST(ExpectThrowTest, ExpectThrowAnyValue) {
+    EXPECT_ANY_THROW(throw_func(0));
+}
+```
+
+`EXPECT_THROW` 是 Google Test 中的一个断言，表示期望调用 `throw_func(0)` 时抛出一个指定类型的异常。
+
+- 第一个参数是调用的函数 `throw_func(0)`，即传入 0 作为参数，函数会抛出异常 `"the number is 0"`。
+
+- 第二个参数 `const char*` 是期望的异常类型。因为 `throw_func(0)` 抛出的异常是 `const char*` 类型的字符串（不是 `std::string` 类型），因此断言 `EXPECT_THROW` 期望捕获的是 `const char*` 类型的异常。
+
+    如果这里断言的是其他类型，在运行时会断言失败
+
+`EXPECT_NO_THROW(throw_func(1));`:
+`EXPECT_NO_THROW` 是 Google Test 中的断言，用于验证调用某个函数时 **不** 会抛出任何异常。
+
+- 这里调用 `throw_func(1)`，由于 `1 != 0`，函数返回 0 并且不会抛出异常，因此该断言期望 `throw_func(1)` 不会抛出任何异常。
+
+`EXPECT_ANY_THROW(throw_func(0));`:
+`EXPECT_ANY_THROW` 是 Google Test 中的断言，表示期望某个函数调用抛出 **任何类型** 的异常。
+
+- 这里调用 `throw_func(0)`，由于 `a == 0`，会抛出 `const char*` 类型的异常 `"the number is 0"`。
+- 因此，该断言期望 `throw_func(0)` 抛出一个异常，无论异常的具体类型是什么。
+
+所以`EXPECT_THROW`和`EXPECT_ANY_THROW`两者的区别就是，一个会限定抛出异常的类型，而另一个则是只要有异常被抛出就会断言成功
+
