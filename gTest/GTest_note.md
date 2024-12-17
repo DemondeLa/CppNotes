@@ -888,3 +888,289 @@ Google Test trace:
  1 FAILED TEST
 ```
 
+
+
+### 七、友元测试
+
+如果要测试的类中，需要测试的值是私有变量，那么在测试用例中就无法访问。而对于C++来说，要访问一个类的私有变量，就需要设置友元类或者友元函数
+
+
+
+```cpp
+// Circle.h
+class Circle
+{
+public:
+    Circle(int r)
+    : _r(r)
+    , _area(r * r * 3.14)
+    {}
+
+    friend class CircleTest; // 声明 CircleTest 类为 Circle 类的友元类
+    FRIEND_TEST(CircleTest, Area);
+
+private:
+    int _r;
+    double _area;
+};
+
+// friend_test.cpp
+TEST(CircleTest, Area) {
+    Circle c(5);
+    EXPECT_EQ(c._area, 78.5);
+}
+
+```
+
+`FRIEND_TEST`是 Google Test 框架中的宏，它的作用是声明特定的测试类的测试案例能够访问目标类的私有成员。
+
+即它声明 `CircleTest` 测试类的 `Area` 测试函数可以访问 `Circle` 类的私有成员。使用这个宏后，`CircleTest` 中的测试函数就可以访问 `Circle` 类的 `_r` 和 `_area` 等私有成员。
+
+具体来说，`FRIEND_TEST(CircleTest, Area)` 会使 `CircleTest` 中的 `Area` 测试用例类（自动生成的）成为 `Circle` 类的友元类。这个自动生成的测试用例类通常名为 `CircleTest_Area_Test`，其中 `Area` 是测试用例的名称。
+
+- `FRIEND_TEST` 宏实际上是让 `CircleTest_Area_Test` 这个自动生成的测试类访问 `Circle` 的私有成员。这是因为 `TEST(CircleTest, Area)` 会生成一个名为 `CircleTest_Area_Test` 的类。
+
+> 这行如果写成`friend class CircleTest_Area_Test;`也会有同样的效果。
+>
+> `friend class CircleTest_Area_Test;` 直接声明 `CircleTest_Area_Test` 为 `Circle` 类的友元类。这样，无论 `CircleTest_Area_Test` 是否由 `TEST` 宏生成，它都可以访问 `Circle` 类的私有成员。
+>
+> > - **`FRIEND_TEST(CircleTest, Area)`** 是与 Google Test 结合使用的宏，它会自动处理测试用例类的名称，并且与 `TEST` 宏产生的测试用例类名称紧密绑定。在 Google Test 框架下，这种方式是推荐的做法，它简化了友元类的声明，并且明确与测试相关。
+> > - **`friend class CircleTest_Area_Test;`** 是显式声明一个类为友元类的方法，但它要求你知道并显式声明 `CircleTest_Area_Test` 类。如果你修改了测试名称或其他结构，必须手动调整这个声明。而使用 `FRIEND_TEST` 宏可以更灵活，且不需要关注测试类名称的变化。
+
+`TEST(CircleTest, Area)` 使用 Google Test 框架的 `TEST` 宏定义了一个测试案例。`CircleTest` 是测试夹具名称，`Area` 是测试案例名称。
+
+```bash
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from CircleTest
+[ RUN      ] CircleTest.Area
+[       OK ] CircleTest.Area (0 ms)
+[----------] 1 test from CircleTest (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (0 ms total)
+[  PASSED  ] 1 test.
+```
+
+
+
+### 八、跳过测试
+
+有时写了测试用例，但是还不完善，经常失败，想要临时的不执行，只执行其他的用例。基于这种情况，就可以在测试用例前面，使用`GTEST_SKIP()`来进行跳过，而且还可以打印出一些描述性的信息。
+
+- `GTEST_SKIP()` 用于跳过当前的测试案例。它会使当前测试不再执行，直接标记为“跳过”，并不会影响后续的测试。
+- `GTEST_SKIP()` 常用于在某些特定条件下，跳过测试的执行。例如，测试依赖某些外部环境或条件，当条件不满足时，可以使用 `GTEST_SKIP()` 来跳过该测试。
+
+这是一种用于控制测试执行流程的宏。类似的还有`GTEST_FAIL()`，它会直接导致测试用例执行失败，而不会继续往后执行
+
+- `GTEST_FAIL()` 用于强制使当前的测试失败。它会立即标记当前测试为失败，并跳过后续的断言和执行。
+- `GTEST_FAIL()` 常用于在某些特殊情况下，提前标记测试失败。例如，当某些重要的前提条件无法满足时，可以直接调用 `GTEST_FAIL()` 来表示当前测试不应该继续执行。
+
+同理，还有`GTEST_SUCCEED()`强制当前用例正确，还需继续执行剩余的用例，用处不大
+
+| 特性                     | `GTEST_SKIP()`                     | `GTEST_FAIL()`                   |
+| ------------------------ | ---------------------------------- | -------------------------------- |
+| **作用**                 | 跳过当前测试，测试不再执行         | 强制测试失败，后续的断言不再执行 |
+| **测试结果**             | 标记为跳过（SKIPPED）              | 标记为失败（FAILED）             |
+| **是否继续执行后续断言** | 是，跳过当前测试后的代码仍会被执行 | 否，测试失败后不会执行后续代码   |
+| **常见用途**             | 某些条件不满足时跳过测试           | 某些前提条件不满足时提前失败测试 |
+
+```cpp
+#include <gtest/gtest.h>
+
+int add(int a, int b) {
+    return a + b;
+}
+
+TEST(SkipTest, case1) {
+    EXPECT_EQ(2,  add(1, 1));
+}
+
+TEST(SkipTest, case2) {
+    GTEST_SKIP() << "Skipping this test";
+    EXPECT_EQ(4,  add(2, 3));
+}
+
+TEST(SkipTest, case3) {
+    GTEST_FAIL() << "Failed this test && end test";
+    EXPECT_EQ(5,  add(2, 3));
+}
+
+TEST(SkipTest, case4) {
+    EXPECT_EQ(4,  add(2, 2));
+}
+```
+
+注意，在上面的代码中，`case4` 是另外一个独立的测试用例，它会正常执行，无论 `case3` 之前是否调用了 `GTEST_FAIL()`。每个 `TEST` 用例都有自己的独立执行上下文和生命周期，所以 `case4` 会照常执行，除非它本身遇到某些错误。
+
+在 `case3` 中，`GTEST_FAIL()` 被调用后，当前测试就会失败并停止后续的断言执行，但它不会停止整个测试文件中其他测试的执行。也就是说，虽然 `case3` 会失败，但这并不影响其他测试用例（如 `case4`）的运行。
+
+> 另一个需要注意的点就是，==在上面的代码中，并没有google test的`main`函数==，但是依然能够正常运行，并生成可执行文件
+>
+> 这是因为 Google Test 框架自动处理了主函数的调用。在使用 Google Test 时，通常不需要手动编写 `main` 函数。Google Test 提供了一个默认的 `main` 函数实现，它会在底层自动初始化测试框架并运行所有测试用例。这个默认的 `main` 函数就是你不写 `main` 时，Google Test 会自动提供的
+
+```bash
+Running main() from /home/will/lesson/gTest/googletest/googletest/src/gtest_main.cc
+[==========] Running 4 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 4 tests from SkipTest
+[ RUN      ] SkipTest.case1
+[       OK ] SkipTest.case1 (0 ms)
+[ RUN      ] SkipTest.case2
+/home/will/lesson/gTest/08.skip/skip_test.cpp:12: Skipped
+Skipping this test
+
+[  SKIPPED ] SkipTest.case2 (0 ms)
+[ RUN      ] SkipTest.case3
+/home/will/lesson/gTest/08.skip/skip_test.cpp:17: Failure
+Failed
+Failed this test && end test
+
+[  FAILED  ] SkipTest.case3 (0 ms)
+[ RUN      ] SkipTest.case4
+[       OK ] SkipTest.case4 (0 ms)
+[----------] 4 tests from SkipTest (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 4 tests from 1 test suite ran. (0 ms total)
+[  PASSED  ] 2 tests.
+[  SKIPPED ] 1 test, listed below:
+[  SKIPPED ] SkipTest.case2
+[  FAILED  ] 1 test, listed below:
+[  FAILED  ] SkipTest.case3
+
+ 1 FAILED TEST
+```
+
+不使用上面的`GTEST_SKIP()`也可以跳过测试用例
+
+在运行可执行文件时，添加`--gtest_filter`，也可以灵活的控制测试用例的执行
+
+```bash
+$ ./skip_test --gtest_filter='SkipTest.case1'
+Running main() from /home/will/lesson/gTest/googletest/googletest/src/gtest_main.cc
+Note: Google Test filter = SkipTest.case1
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from SkipTest
+[ RUN      ] SkipTest.case1
+[       OK ] SkipTest.case1 (0 ms)
+[----------] 1 test from SkipTest (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (0 ms total)
+[  PASSED  ] 1 test.
+
+$ ./skip_test --gtest_filter='SkipTest.case*-SkipTest.case3'
+Running main() from /home/will/lesson/gTest/googletest/googletest/src/gtest_main.cc
+Note: Google Test filter = SkipTest.case*-SkipTest.case3
+[==========] Running 3 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 3 tests from SkipTest
+[ RUN      ] SkipTest.case1
+[       OK ] SkipTest.case1 (0 ms)
+[ RUN      ] SkipTest.case2
+/home/will/lesson/gTest/08.skip/skip_test.cpp:12: Skipped
+Skipping this test
+
+[  SKIPPED ] SkipTest.case2 (0 ms)
+[ RUN      ] SkipTest.case4
+[       OK ] SkipTest.case4 (0 ms)
+[----------] 3 tests from SkipTest (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 3 tests from 1 test suite ran. (0 ms total)
+[  PASSED  ] 2 tests.
+[  SKIPPED ] 1 test, listed below:
+[  SKIPPED ] SkipTest.case2
+```
+
+其中`*`表示运行所有前缀为`case`的用例，`-`表示不执行后面的测试用例，当然前面省略，直接从`-`开始也是可以的，因为默认就是全集
+
+从执行的结果来看，这种是直接不执行，即不纳入执行的测试用例的队列中，而前面的跳过则是纳入执行的队列中，当执行到该用例的时候进行跳过
+
+另外，可以通过`./可执行程序 --help`来查看控制其行为的参数
+
+
+
+### 九、广义断言
+
+相较于之前用过的`EXPECT_EQ`、`EXXPECT_NE`、`EXPECT_LS`等，google test还支持更多的方式，诸如字符串的匹配、正则匹配，以及数字范围的判断
+
+`EXPECT_THAT`：用于执行期望检查，判断 `Hello()` 函数返回的值是否符合预期。
+
+- `::testing::StartsWith("Hello World")`：这是 Google Test 提供的一个匹配器，检查返回的字符串是否以 `"Hello World"` 开头。即使随机数部分不同，只要返回的字符串前缀是 `"Hello World"`，这个测试就会通过。
+- `::testing::AllOf(::testing::Ge(0), ::testing::Lt(10))`：这是一个组合匹配器，表示返回的值应该同时满足以下两个条件：
+    - `::testing::Ge(0)`：大于 0。
+    - `::testing::Lt(10)`：小于 10。
+
+```cpp
+std::string Hello() {
+    return "Hello World" + std::to_string(rand());
+}
+
+int Rand10() {
+    return rand() % 10;
+}
+
+TEST(GeneralizedAssert, Hello) {
+    EXPECT_THAT(Hello(), ::testing::StartsWith("Hello World"));
+}
+
+TEST(GeneralizedAssert, Rand10) {
+    EXPECT_THAT(Rand10(), ::testing::AllOf(::testing::Gt(0), ::testing::Lt(10)));
+}
+```
+
+在上面的代码中，`Hello()`函数的返回值中含有随机数，难以像之前的`EQ`一样准确的设置期望值，所以使用`EXPECT_THAT`后面跟一个匹配器（GTest有非常多的匹配器）
+
+因为这里涉及到随机数，可以使用上一章的命令，多次运行测试用例
+
+```bash
+$ ./general_test --gtest_repeat=100
+Running main() from /home/will/lesson/gTest/googletest/googletest/src/gtest_main.cc
+
+Repeating all tests (iteration 1) . . .
+
+[==========] Running 2 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 2 tests from GeneralizedAssert
+[ RUN      ] GeneralizedAssert.Hello
+[       OK ] GeneralizedAssert.Hello (0 ms)
+[ RUN      ] GeneralizedAssert.Rand10
+[       OK ] GeneralizedAssert.Rand10 (0 ms)
+[----------] 2 tests from GeneralizedAssert (0 ms total)
+
+[==========] 2 tests from 1 test suite ran. (0 ms total)
+[  PASSED  ] 2 tests.
+
+
+Repeating all tests (iteration 99) . . .
+
+[==========] Running 2 tests from 1 test suite.
+[----------] 2 tests from GeneralizedAssert
+[ RUN      ] GeneralizedAssert.Hello
+[       OK ] GeneralizedAssert.Hello (0 ms)
+[ RUN      ] GeneralizedAssert.Rand10
+[       OK ] GeneralizedAssert.Rand10 (0 ms)
+[----------] 2 tests from GeneralizedAssert (0 ms total)
+
+[==========] 2 tests from 1 test suite ran. (0 ms total)
+[  PASSED  ] 2 tests.
+
+Repeating all tests (iteration 100) . . .
+
+[==========] Running 2 tests from 1 test suite.
+[----------] 2 tests from GeneralizedAssert
+[ RUN      ] GeneralizedAssert.Hello
+[       OK ] GeneralizedAssert.Hello (0 ms)
+[ RUN      ] GeneralizedAssert.Rand10
+[       OK ] GeneralizedAssert.Rand10 (0 ms)
+[----------] 2 tests from GeneralizedAssert (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 2 tests from 1 test suite ran. (0 ms total)
+[  PASSED  ] 2 tests.
+```
+
+更多的匹配器，可以查看官方文档中https://google.github.io/googletest/reference/matchers.html，里面介绍的匹配器
