@@ -1226,3 +1226,271 @@ TEST(ExpectThrowTest, ExpectThrowAnyValue) {
 
 所以`EXPECT_THROW`和`EXPECT_ANY_THROW`两者的区别就是，一个会限定抛出异常的类型，而另一个则是只要有异常被抛出就会断言成功
 
+
+
+### 十一、错误信息美化
+
+当gtest断言失败时，打印的信息如果不符合要求，可以进行“美化”，更方便阅读
+
+每个`EXXPECT`和`ASSERT`的断言，返回的是一个流，所以后面可以通过流输出的符号，添加一些输出信息或者是其他想要输出的数据
+
+```cpp
+int add(int a, int b) {
+    return a - b;
+}
+
+// 演示自定义错误信息
+TEST(AddTest, Case1) {
+    EXPECT_EQ(add(1, 2), 3) << "add(1, 2) should be 3";
+}
+
+::testing::AssertionResult MyAddTest(
+    const char *expr_a,
+    const char *expr_b,
+    const char *expr_result,
+    int a, 
+    int b, int result)
+{
+    if (add(a, b) == result)
+        return ::testing::AssertionSuccess();
+    else 
+        return ::testing::AssertionFailure() << "add ("
+            << a << ", " << b << ") should be " << result;
+}
+
+TEST(AddTest, Case2) {
+    EXPECT_PRED_FORMAT3(MyAddTest, 1, 2, 3);
+    EXPECT_PRED_FORMAT3(MyAddTest, 2, 6, 8);
+}
+```
+
+`TEST(AddTest, Case1)` 定义了一个名为 `AddTest` 的测试集和一个名为 `Case1` 的测试用例。之后，还可以附加错误信息,用于当断言失败时，提供额外的调试信息，`<< "add(1, 2) should be 3"`告诉我们，`add(1, 2)` 应该返回 `3`，但实际上返回的是 `-1`
+
+`MyAddTest`是自定义断言函数，它的作用是对 `add` 函数进行断言并生成自定义的错误信息：
+
+- 如果 `add(a, b)` 的结果与预期结果 `result` 相等，函数返回 `::testing::AssertionSuccess()`，表示测试通过。
+- 否则，返回 `::testing::AssertionFailure()`，并附加一条错误信息，显示 `add(a, b)` 应该返回的预期结果。
+
+`expr_a`, `expr_b`, 和 `expr_result` 参数是用于传递表达式本身的（例如，`a`, `b`, `result`），是gtest帮我们格式化好的字符串，但在这里并未直接使用；后面的`int a`等才是实际的参数。然后在后面写测试的逻辑
+
+在下面的`Case2`测试用例中，使用了 `EXPECT_PRED_FORMAT3` 断言宏，该宏允许传入一个自定义断言函数（`MyAddTest`），并提供三个参数（`1, 2, 3` 和 `2, 6, 8`）。其实是6个参数，前面的`expr`占了字符串格式化的参数；如果是`FORMAT2`则说明有俩个`expr`的`char`类型参数，以及两个其他类型的参数。最多支持到`FORMAT5`
+
+每次断言都会调用 `MyAddTest`，并检查 `add(a, b)` 是否返回预期的结果。这种方式是可以复用的，比起上面一种在流后面添加输出信息的方式，这种方式只要定义好之后，使用起来会比较方便
+
+- `EXPECT_PRED_FORMAT3(MyAddTest, 1, 2, 3)` 会调用 `MyAddTest(1, 2, 3)`，即检查 `add(1, 2)` 是否返回 `3`。
+- `EXPECT_PRED_FORMAT3(MyAddTest, 2, 6, 8)` 会调用 `MyAddTest(2, 6, 8)`，即检查 `add(2, 6)` 是否返回 `8`。
+
+由于 `add` 函数实现错误（实际上返回的是 `a - b`），这两个断言都会失败。错误信息会显示自定义的消息，如 `add (1, 2) should be 3` 和 `add (2, 6) should be 8`。
+
+运行结果
+
+```bash
+Running main() from /home/will/lesson/gTest/googletest/googletest/src/gtest_main.cc
+[==========] Running 2 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 2 tests from AddTest
+[ RUN      ] AddTest.Case1
+/home/will/lesson/gTest/11.error_message/better_error_message.cpp:10: Failure
+Expected equality of these values:
+  add(1, 2)
+    Which is: -1
+  3
+add(1, 2) should be 3 # 以流方式输出的信息
+
+[  FAILED  ] AddTest.Case1 (0 ms)
+[ RUN      ] AddTest.Case2
+/home/will/lesson/gTest/11.error_message/better_error_message.cpp:28: Failure
+add (1, 2) should be 3 #
+
+/home/will/lesson/gTest/11.error_message/better_error_message.cpp:29: Failure
+add (2, 6) should be 8 #
+
+[  FAILED  ] AddTest.Case2 (0 ms)
+[----------] 2 tests from AddTest (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 2 tests from 1 test suite ran. (0 ms total)
+[  PASSED  ] 0 tests.
+[  FAILED  ] 2 tests, listed below:
+[  FAILED  ] AddTest.Case1
+[  FAILED  ] AddTest.Case2
+
+ 2 FAILED TESTS
+```
+
+
+
+### 十二、浮点数比较
+
+浮点数在C/C++中是不能直接比较的，比较相等也是判断两个浮点数之差是否小于一个极小的数
+
+这里介绍两种方式，都是之前有用过的宏：
+
+`EXPECT_PRED_FORMAT` 是 Google Test 中用于进行自定义断言的宏，它能够在单元测试中验证自定义的条件或逻辑。这个宏通常用于那些 Google Test 内置的比较函数（比如 `EXPECT_EQ` 或 `EXPECT_LT`）无法直接满足的特殊需求，或者在比较复杂的条件下使用。具体来说，`EXPECT_PRED_FORMAT` 可以用来验证一个格式化的谓词（predicate）是否对给定的输入成立。
+
+```cpp
+EXPECT_PRED_FORMAT(format, val1, val2);
+```
+
+- `format`：这个参数通常是一个谓词函数，定义了两个输入参数（例如，`val1` 和 `val2`）之间的比较逻辑。它返回一个布尔值，表示是否满足条件。
+
+    常见的格式化函数（谓词）
+
+    - **`::testing::FloatLE`**: 检查一个 `float` 类型的值是否小于或等于另一个值。
+    - **`::testing::DoubleLE`**: 检查一个 `double` 类型的值是否小于或等于另一个值。
+    - **`::testing::Eq`**: 检查两个值是否相等。
+    - **`::testing::Ne`**: 检查两个值是否不相等。
+    - **`::testing::Lt`**: 检查第一个值是否小于第二个值。
+    - **`::testing::Le`**: 检查第一个值是否小于或等于第二个值。
+    - **`::testing::Gt`**: 检查第一个值是否大于第二个值。
+    - **`::testing::Ge`**: 检查第一个值是否大于或等于第二个值。
+
+- `val1` 和 `val2`：这两个是传递给谓词函数的值，通常是你希望进行比较或验证的对象。
+
+`EXPECT_PRED_FORMAT` 宏会调用你传入的谓词函数，并检查它返回的布尔值。如果谓词返回 `true`，测试通过；如果返回 `false`，测试失败。
+
+```cpp
+TEST(CompareFloat, Pred) {
+    EXPECT_PRED_FORMAT2(::testing::FloatLE, 0.50, 0.51);
+    EXPECT_PRED_FORMAT2(::testing::DoubleLE, 0.50, 0.51);
+}
+```
+
+1. `TEST(CompareFloat, Pred)` 是一个测试案例的定义。它包含了两个检查浮点数大小关系的 `EXPECT_PRED_FORMAT2` 语句。每个 `EXPECT_PRED_FORMAT2` 用来比较两个浮点数值。`EXPECT_PRED_FORMAT2` 是一个通用的宏，它接受一个谓词（`::testing::FloatLE` 或 `::testing::DoubleLE`）以及两个值（在这里是 0.50 和 0.51），并验证这两个值是否满足指定的条件。
+2. `::testing::FloatLE` 是一个断言谓词，用来检查一个 `float` 类型的数值是否小于或等于另一个 `float` 类型的数值。`::testing::DoubleLE` 是相似的，用来比较 `double` 类型的数值。具体来说：
+    - `EXPECT_PRED_FORMAT2(::testing::FloatLE, 0.50, 0.51)` 会验证 0.50 是否小于或等于 0.51。
+    - `EXPECT_PRED_FORMAT2(::testing::DoubleLE, 0.50, 0.51)` 会验证 0.50 是否小于或等于 0.51。
+
+另一个是，`EXPECT_THAT()` 是 Google Test 框架中的一个宏，提供了一种更具描述性的方式来进行断言。它常与 **Matcher** （匹配器）一起使用，以便于对对象进行更复杂的验证。相比传统的 `EXPECT_*` 断言，`EXPECT_THAT()` 使得断言更加清晰和灵活，特别是在处理复杂的对象或条件时。
+
+```cpp
+EXPECT_THAT(value, matcher);
+```
+
+- `value`：需要进行检查的值或表达式，通常是要验证的目标对象。
+- `matcher`：用于描述匹配条件的 **Matcher**，即一种函数对象或表达式，描述如何验证 `value` 是否符合期望的条件。
+
+`EXPECT_THAT()` 通过使用 matcher 来定义对 `value` 的验证条件。matcher 是一种用于匹配某个值的规则或标准，它可以是一个预定义的标准，也可以是用户自定义的。`EXPECT_THAT()` 会检查 `value` 是否满足 `matcher` 中定义的条件。
+
+如果 `value` 满足 `matcher` 的要求，测试通过；如果不满足，测试失败。
+
+```cpp
+TEST(CompareFloat, ExpectThat) {
+    EXPECT_THAT(0.50, ::testing::Le(0.51));
+}
+```
+
+1. `TEST(CompareFloat, ExpectThat)` 定义了另一个测试案例。
+
+2. `EXPECT_THAT(0.50, ::testing::Le(0.51))` 使用了 Google Test 的 `EXPECT_THAT` 宏进行断言。`EXPECT_THAT` 是一种更具描述性的断言方式，通常配合匹配器（Matchers）使用。在这里，`::testing::Le(0.51)` 是一个匹配器，用来检查 0.50 是否小于或等于 0.51。
+
+    具体来说：
+
+    - `Le(0.51)` 是一个匹配器，表示 "Less than or Equal to 0.51"，即检查第一个参数是否小于或等于 0.51。
+    - `EXPECT_THAT(0.50, ::testing::Le(0.51))` 会验证 0.50 是否小于或等于 0.51。
+
+    由于 0.50 确实小于 0.51，这个断言也会通过。
+
+在上面这两种比较的方法中，`PRED`看起更加直观一些；而`THAT`则更加符合函数式编程的思想，另外不要忘记，匹配器是在`gmock.h`中定义的，需要导入该头文件
+
+```bash
+Running main() from /home/will/lesson/gTest/googletest/googletest/src/gtest_main.cc
+[==========] Running 2 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 2 tests from CompareFloat
+[ RUN      ] CompareFloat.Pred
+[       OK ] CompareFloat.Pred (0 ms)
+[ RUN      ] CompareFloat.ExpectThat
+[       OK ] CompareFloat.ExpectThat (0 ms)
+[----------] 2 tests from CompareFloat (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 2 tests from 1 test suite ran. (0 ms total)
+[  PASSED  ] 2 tests.
+```
+
+
+
+### 十三、字符串断言
+
+gtest对于字符串的断言，不仅是相等的比较，还包括正则表达式的匹配、字符串起始以及结尾的判断，具体的可以查看gtest说明文档中的匹配器
+
+```cpp
+std::string generate_tmp_file_name() {
+    return "/tmp/test_file_" + std::to_string(rand());
+}
+
+TEST(StringAssert, Regex) {
+    EXPECT_THAT(generate_tmp_file_name(), testing::MatchesRegex("/tmp/test_file_[0-9]+"));
+}
+```
+
+- `TEST(StringAssert, Regex)` 是一个 Google Test 的测试用例。
+
+- ```cpp
+    EXPECT_THAT(generate_tmp_file_name(), testing::MatchesRegex("/tmp/test_file_[0-9]+"))
+    ```
+
+    - `EXPECT_THAT` 是 Google Test 提供的一个断言宏，用于验证某个值是否符合给定的匹配条件。
+    - `generate_tmp_file_name()` 调用生成一个文件名。
+    - `testing::MatchesRegex()`是一个 matcher，它检查生成的文件名是否匹配给定的正则表达式 `/tmp/test_file_[0-9]+`。这个正则表达式表示：
+        - 文件名应以 `/tmp/test_file_` 开头。
+        - 后面跟着一个或多个数字（`[0-9]+` 表示一个或多个数字）。
+    - 该断言检查生成的文件名是否符合这一正则表达式模式。由于 `rand()` 会生成一个随机数，生成的文件名通常会满足这一模式。
+
+```cpp
+TEST(StringAssert, StartsWith) {
+    EXPECT_THAT(generate_tmp_file_name(), testing::StartsWith("/tmp/test_file_"));
+}
+```
+
+- `TEST(StringAssert, StartsWith)` 是另一个 Google Test 的测试用例。
+
+- ```cpp
+    EXPECT_THAT(generate_tmp_file_name(), testing::StartsWith("/tmp/test_file_"))
+    ```
+
+    - `generate_tmp_file_name()` 生成的文件名应以 `/tmp/test_file_` 开头。
+    - `testing::StartsWith("/tmp/test_file_")` 是一个 matcher，用于检查字符串是否以指定的前缀开始。
+    - 该断言验证生成的临时文件名是否符合 `/tmp/test_file_` 这个前缀。由于生成的文件名是以 `/tmp/test_file_` 开头，这个断言也应该通过。
+
+```cpp
+TEST(StringAssert, EqualWithoutCase) {
+    EXPECT_THAT("/tmp/test_file", testing::StrCaseEq("/TMP/TEST_FILE"));
+}
+```
+
+- `TEST(StringAssert, EqualWithoutCase)` 是另一个 Google Test 的测试用例。
+
+- ```cpp
+    EXPECT_THAT(generate_tmp_file_name(), testing::StrCaseEq("/TMP/TEST_FILE"))
+    ```
+
+    - `testing::StrCaseEq("/TMP/TEST_FILE")` 是一个 matcher，用于忽略大小写地检查两个字符串是否相等。
+    - 它会将 `generate_tmp_file_name()` 生成的临时文件名与 `/TMP/TEST_FILE` 进行比较，忽略大小写差异。
+    - 由于生成的文件名通常是 `/tmp/test_file_<random_number>`，它与 `/TMP/TEST_FILE` 不会完全相等，因此这个断言一般不会通过。
+
+```bash
+Running main() from /home/will/lesson/gTest/googletest/googletest/src/gtest_main.cc
+[==========] Running 3 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 3 tests from StringAssert
+[ RUN      ] StringAssert.Regex
+[       OK ] StringAssert.Regex (0 ms)
+[ RUN      ] StringAssert.StartsWith
+[       OK ] StringAssert.StartsWith (0 ms)
+[ RUN      ] StringAssert.EqualWithoutCase
+[       OK ] StringAssert.EqualWithoutCase (0 ms)
+[----------] 3 tests from StringAssert (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 3 tests from 1 test suite ran. (0 ms total)
+[  PASSED  ] 3 tests.
+```
+
+
+
+### 十四、自定义类型打印
+
+自定义类型的数据，在gtest中怎么格式化
+
