@@ -1494,3 +1494,769 @@ Running main() from /home/will/lesson/gTest/googletest/googletest/src/gtest_main
 
 自定义类型的数据，在gtest中怎么格式化
 
+先定义一个类
+
+```cpp
+class Circle {
+public:
+    Circle (double r)
+    : _r(r)
+    , _area(3.14 * _r * _r)
+    {
+        std::cout << "Circle(r)\n";
+    }
+    
+    bool operator==(const Circle &other) const {
+        return (_r == other._r) && (_area == other._area);
+    }
+
+    friend void PrintTo(const Circle &circle, std::ostream *os) {
+        *os << "Circle: r = " << circle._r << ", area = " << circle._area << "\n";
+    }
+
+private:
+    double _r;
+    double _area;
+};
+
+Circle make_circle(double r) {
+    return Circle(r);
+}
+```
+
+其中，`PrintTo()`是 `Circle` 类的友元函数，允许访问 `Circle` 类的私有成员 `_r` 和 `_area`。它接受一个 `Circle` 对象和一个输出流指针（如 `std::ostream`），然后将圆的半径和面积输出到流中，通常是 `std::cout` 或文件流。这是一个输出函数，使得可以将 `Circle` 对象的相关信息打印到外部流中，而无需暴露类的私有成员。
+
+使用 Google Test 框架进行单元测试，`EXPECT_EQ` 检查这两个 `Circle` 对象是否相等（调用了重载的 `==` 操作符）。由于两个对象的半径和面积不同，比较会返回 `false`，因此该测试会失败。
+
+```cpp
+TEST(CircleTest, case1) {
+    EXPECT_EQ(make_circle(5.0), Circle(4.9));
+}
+```
+
+**`TEST(CircleTest, case1)`**
+
+- `TEST` 是 Google Test 框架中的宏，用于定义一个测试用例。
+- `CircleTest` 是测试的名称，通常用于组织相关的测试案例。这个名称可以用来分组多个测试案例，方便识别和执行。
+- `case1` 是该测试用例的名称，可以是任何有效的标识符，用来区分不同的测试场景。
+
+**`EXPECT_EQ(make_circle(5.0), Circle(4.9));`**
+
+- `EXPECT_EQ` 是 Google Test 提供的断言宏，用于判断两个值是否相等。如果这两个值不相等，测试会失败并输出错误信息。
+- `make_circle(5.0)` 调用 `make_circle` 函数并传入 `5.0` 作为半径，创建一个半径为 `5.0` 的 `Circle` 对象。根据代码，`make_circle` 内部调用 `Circle` 构造函数，构造出一个圆形对象，半径为 `5.0`，面积为 `3.14 * 5.0 * 5.0 = 78.5`。
+- `Circle(4.9)` 是直接使用 `Circle` 类构造一个半径为 `4.9` 的圆形对象，构造时会计算出面积 `3.14 * 4.9 * 4.9 = 75.0754`。
+- 这两个 `Circle` 对象在半径和面积上是不同的。`make_circle(5.0)` 的圆的半径是 `5.0`，面积是 `78.5`，而 `Circle(4.9)` 的圆的半径是 `4.9`，面积是 `75.0754`。
+- 因此，`EXPECT_EQ` 会判断 `make_circle(5.0)` 和 `Circle(4.9)` 是否相等。由于它们的半径和面积不同，`operator==` 会返回 `false`。
+
+```bash
+Running main() from /home/will/lesson/gTest/googletest/googletest/src/gtest_main.cc
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from CircleTest
+[ RUN      ] CircleTest.case1
+Circle(r)
+Circle(r)
+/home/will/lesson/gTest/14.custom_print/Circle.cpp:31: Failure
+Expected equality of these values:
+  make_circle(5.0)
+    Which is: 16-byte object <00-00 00-00 00-00 14-40 00-00 00-00 00-A0 53-40>
+  Circle(4.9)
+    Which is: 16-byte object <9A-99 99-99 99-99 13-40 E2-E9 95-B2 0C-D9 52-40>
+
+[  FAILED  ] CircleTest.case1 (0 ms)
+[----------] 1 test from CircleTest (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (0 ms total)
+[  PASSED  ] 0 tests.
+[  FAILED  ] 1 test, listed below:
+[  FAILED  ] CircleTest.case1
+
+ 1 FAILED TEST
+```
+
+通过上面的执行结果，可以看到，在断言失败时，会打印该对象的十六进制的数据，不知道其具体的内容
+
+此时，就需要通过上面定义的友元函数来输出一下可视化（格式化）的信息
+
+```bash
+Running main() from /home/will/lesson/gTest/googletest/googletest/src/gtest_main.cc
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from CircleTest
+[ RUN      ] CircleTest.case1
+Circle(r)
+Circle(r)
+/home/will/lesson/gTest/14.custom_print/Circle.cpp:31: Failure
+Expected equality of these values:
+  make_circle(5.0)
+    Which is: Circle: r = 5, area = 78.5
+
+  Circle(4.9)
+    Which is: Circle: r = 4.9, area = 75.3914
+
+
+[  FAILED  ] CircleTest.case1 (0 ms)
+[----------] 1 test from CircleTest (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (0 ms total)
+[  PASSED  ] 0 tests.
+[  FAILED  ] 1 test, listed below:
+[  FAILED  ] CircleTest.case1
+
+ 1 FAILED TEST
+```
+
+
+
+### 十五、死亡测试
+
+程序中的一些分支会引起应用程序退出，无论是异常退出（例如说段错误，abort信号），或者是正常的退出（比如主动调用`exit()`），对于这种情况，就叫做gtest的死亡测试
+
+其原理，就是从当前的位置`fork`出一个新的进程，然后观测新进程的执行行为，将其结果反馈到主测试进程，然后主测试进程即可知道执行该函数后的结果
+
+```cpp
+void abort_func() {
+    abort();
+    // abort() 是一个标准库函数，它会使程序异常终止，并且会生成一个 SIGABRT 信号。这个信号通常会导致程序崩溃。
+}
+
+void crash_func(int a) {
+    if (a == 0) {
+        // std::cout << "branch a == 0\n";
+        std::cerr << "branch a == 0\n";
+        int *p = nullptr;
+        *p = 0;
+    } else {
+        // std::cout << "branch a != 0\n";
+        std::cerr << "branch a != 0\n";
+        exit(50);
+    }
+}
+/*
+这个函数的作用是根据输入参数 a 执行不同的操作：
+如果 a == 0，会导致空指针解引用 *p = 0，这将导致 段错误（SIGSEGV）。
+如果 a != 0，会调用 exit(50)，这会使程序正常退出并返回状态码 50。
+*/
+
+// 修改：
+原本的 std::cout << "branch a == 0\n"; 被注释掉，改为 std::cerr << "branch a == 0\n";，这意味着程序会通过标准错误流（stderr）输出 "branch a == 0\n"。
+```
+
+对上面的两个函数进行测试
+
+```cpp
+TEST(DeathTest, Crash) {
+    ASSERT_DEATH(crash_func(0), "branch.*");
+}
+```
+
+**`ASSERT_DEATH`** 是 Google Test 提供的一个宏，用于测试被调用的函数是否会导致程序崩溃（例如通过段错误）。
+
+- `crash_func(0)` 会触发空指针解引用，导致 **段错误**（`SIGSEGV`），符合预期的崩溃行为。
+
+    首先输出 `"branch a == 0\n"`（通过标准错误流 `stderr`）。，然后发生空指针解引用，导致 **段错误**（`SIGSEGV`）
+
+- 第二个参数是正则表达式，用来匹配崩溃时输出的日志信息。在这里`".*"` 是一个通配符，表示匹配任何内容，因为我们只关心程序是否崩溃
+
+    而`"branch.*"`表示期望在程序崩溃之前输出的日志内容应该包含 `"branch"` 并且后面可以跟随任何字符。这个正则表达式没有指定输出流（标准输出 `stdout` 或标准错误 `stderr`），因此它会匹配任何包含 `"branch"` 的输出，无论是通过 `std::cout` 还是 `std::cerr`。
+
+```cpp
+TEST(DeathTest, Abort) {
+    EXPECT_EXIT(abort_func(), ::testing::KilledBySignal(SIGABRT), ".*");
+}
+```
+
+**`EXPECT_EXIT`** 用于测试程序是否退出，并且可以捕获程序退出的状态码或信号。
+
+- `abort_func()` 会调用 `abort()`，导致程序收到 `SIGABRT` 信号，进而崩溃。
+- 第二个参数 `::testing::KilledBySignal(SIGABRT)` 表示期望程序因为 `SIGABRT` 信号而崩溃。
+- 第三个参数 `".*"` 是正则表达式，表示可以匹配任何输出内容，因为我们只关心程序是否因为 `SIGABRT` 信号崩溃。
+
+```cpp
+TEST(DeathTest, CrashCode) {
+    EXPECT_EXIT(crash_func(0), ::testing::KilledBySignal(SIGSEGV), ".*");
+}
+```
+
+这个测试用例和第一个类似，只不过这里更加详细的判断了是因为什么原因退出的
+
+- 这里测试 `crash_func(0)` 的行为。当 `a == 0` 时，`crash_func` 会导致空指针解引用，进而产生 `SIGSEGV` 信号。
+- 因此，我们期望 `crash_func(0)` 执行时，程序会因为 `SIGSEGV` 信号崩溃，第二个参数 `::testing::KilledBySignal(SIGSEGV)` 就是用来检测这一信号。
+
+```cpp
+TEST(DeathTest, Normal) {
+    EXPECT_EXIT(crash_func(1), ::testing::ExitedWithCode(50), "br.*");
+}
+```
+
+这里测试的是正常退出
+
+- 测试 `crash_func(1)` 的行为。当 `a != 0` 时，`crash_func` 会调用 `exit(50)` 正常退出程序并返回状态码 `50`。
+- 因此，期望程序退出时返回 `50`，即 `::testing::ExitedWithCode(50)`。
+- 第三个参数是正则表达式：`".*"` 是用来匹配任何输出内容的正则表达式；`"br.*"`表示我们期望在程序退出前，输出的日志信息应该以 `"br"` 开头，这个输出是 `"branch a != 0\n"`。
+
+注意点：
+
+> 在 `crash_func()` 中，使用`cout`打印信息时，用例1和4都会断言失败
+>
+> ```bash
+> [ RUN      ] DeathTest.Crash
+> branch a == 0
+> /home/will/lesson/gTest/15.death_test/death_test.cpp:22: Failure
+> Death test: crash_func(0)
+>     Result: died but not with expected error.
+>   Expected: contains regular expression "branch.*"
+> Actual msg:
+> [  DEATH   ] 
+> 
+> [  FAILED  ] DeathTest.Crash (109 ms)
+> ```
+>
+> ```bash
+> [ RUN      ] DeathTest.Normal
+> branch a != 0
+> /home/will/lesson/gTest/15.death_test/death_test.cpp:34: Failure
+> Death test: crash_func(1)
+>     Result: died but not with expected error.
+>   Expected: contains regular expression "br.*"
+> Actual msg:
+> [  DEATH   ] 
+> 
+> [  FAILED  ] DeathTest.Normal (1 ms)
+> ```
+
+在 `crash_func()` 中将 `std::cout` 改为 `std::cerr` 后，测试能够成功断言的原因与 **标准输出流** (`stdout`) 和 **标准错误流** (`stderr`) 之间的区别，以及 Google Test 在处理 "死亡测试"（Death Test）时如何捕获输出流有关。
+
+`EXPECT_EXIT` 是 Google Test 提供的一个断言，用来测试程序是否退出，并且可以捕获程序退出时的状态码和输出内容。它能够捕获标准输出流 (`stdout`) 和标准错误流 (`stderr`) 中的内容，具体行为如下：
+
+- **标准输出流 (`stdout`)**：正常的程序输出。
+- **标准错误流 (`stderr`)**：错误或警告信息输出。
+
+Google Test 在执行 "死亡测试" 时，默认会监控程序的标准输出流和标准错误流。它可以通过正则表达式匹配输出的内容来验证程序是否按预期崩溃、退出或输出了预期的消息。
+
+在大多数情况下，标准输出流 (`stdout`) 和标准错误流 (`stderr`) 是分开的，特别是在测试中。Google Test 默认会捕获标准输出流 (`stdout`)，但它对标准错误流 (`stderr`) 的捕获行为可能会有所不同。
+
+> 当 `crash_func()` 使用 `std::cout` 输出 `"branch a != 0\n"` 时，Google Test 的 `EXPECT_EXIT` 宏会监控标准输出流 (`stdout`) 和标准错误流 (`stderr`) 中的内容，并尝试匹配给定的正则表达式 `"br.*"`。
+>
+> 但是，`EXPECT_EXIT` 默认并不会将标准错误流 (`stderr`) 捕获到正则表达式中，除非你特别指定它。因此，使用 `std::cout` 输出的信息可能没有被 `EXPECT_EXIT` 捕获，因为它主要关注的是标准输出流 (`stdout`)。
+>
+> 当你将输出流从 `std::cout` 改为 `std::cerr` 时，输出内容 `"branch a != 0\n"` 被发送到标准错误流 (`stderr`)。虽然 Google Test 默认捕获的是标准输出流（`stdout`），但是在很多情况下，它也会捕获标准错误流（`stderr`）中的内容。
+>
+> 在这种情况下，Google Test 能够捕获到标准错误流中的 `"branch a != 0\n"`，并且正则表达式 `"br.*"` 能够成功匹配到这个字符串。因此，测试通过了。
+
+`EXPECT_EXIT` 的第二个参数指定了期望的退出状态码或信号。第三个参数是一个正则表达式，用来匹配程序崩溃或退出时的输出内容。无论输出来自标准输出流 (`stdout`) 还是标准错误流 (`stderr`)，如果该内容匹配正则表达式，断言就会通过。
+
+但是，由于默认行为的不同，标准错误流（`stderr`）在某些情况下可能没有被捕获。如果测试没有成功，可能是因为标准输出流 (`stdout`) 的内容没有被正确捕获，而标准错误流 (`stderr`) 被捕获的情况下，正则表达式就能成功匹配。
+
+`ASSERT_DEATH`也是同理。
+
+
+
+### 十六、期待与断言
+
+在 Google Test 中，`EXPECT` 和 `ASSERT` 是两种用于验证测试条件的断言（assertions）。它们的主要区别在于**失败时的行为**和**对测试执行的影响**
+
+#### 期望`expect`
+
+如果 `EXPECT` 断言失败，Google Test 会记录失败信息，但测试用例会继续执行剩余的代码。
+
+它适用于希望在测试用例中检查多个条件，即使某些条件失败，也希望继续执行测试的场景。
+
+#### 断言`assert`
+
+如果 `ASSERT` 断言失败，Google Test 会记录失败信息，并立即终止当前测试用例的执行
+
+它适用于测试条件的前提必须满足，否则后续代码无法安全执行的场景。比如，检查一个指针是否为 `nullptr`，如果为 `nullptr`，就不应该继续访问
+
+| 特性             | `EXPECT`                       | `ASSERT`                       |
+| ---------------- | ------------------------------ | ------------------------------ |
+| **失败后的行为** | 记录失败信息，继续执行后续代码 | 记录失败信息，立即终止测试用例 |
+| **适用场景**     | 测试多个独立条件               | 测试前提条件或关键性断言       |
+| **代码影响**     | 更宽容，可以报告多个失败       | 更严格，保护后续代码免受影响   |
+
+在实际测试中，`EXPECT` 和 `ASSERT` 通常会混合使用：
+
+- 使用 `ASSERT` 检查关键性前提条件，确保后续代码的执行是安全的。
+- 使用 `EXPECT` 检查其他非关键条件，帮助发现更多潜在问题。
+
+```cpp
+TEST(ExpectAssert, Expect1) {
+    EXPECT_EQ(1, 2);
+    EXPECT_EQ(3, 4);
+}
+
+TEST(ExpectAssert, Assert1) {
+    ASSERT_EQ(1, 2);
+    ASSERT_EQ(3, 4);
+}
+
+void sub_routine_expect() {
+    EXPECT_EQ(1, 2);
+    EXPECT_EQ(3, 4);
+}
+
+void sub_routine_assert() {
+    ASSERT_EQ(0, 2);
+    ASSERT_EQ(3, 4);
+}
+
+TEST(ExpectAssert, Expect2) {
+    sub_routine_expect();
+    EXPECT_EQ(5, 6);
+}
+
+TEST(ExpectAssert, Assert2) {
+    sub_routine_assert();
+    ASSERT_EQ(5, 6);
+}
+```
+
+先只测试`Expect1`和`Assert1`，场景1
+
+```bash
+build$ ./expect_assert --gtest_filter='*.*1'
+Running main() from /home/will/lesson/gTest/googletest/googletest/src/gtest_main.cc
+Note: Google Test filter = *.*1
+[==========] Running 2 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 2 tests from ExpectAssert
+[ RUN      ] ExpectAssert.Expect1
+/home/will/lesson/gTest/16.expect_assert/expect_assert.cpp:4: Failure
+Expected equality of these values:
+  1
+  2
+
+/home/will/lesson/gTest/16.expect_assert/expect_assert.cpp:5: Failure
+Expected equality of these values:
+  3
+  4
+
+[  FAILED  ] ExpectAssert.Expect1 (0 ms)
+[ RUN      ] ExpectAssert.Assert1
+/home/will/lesson/gTest/16.expect_assert/expect_assert.cpp:9: Failure
+Expected equality of these values:
+  1
+  2
+
+[  FAILED  ] ExpectAssert.Assert1 (0 ms)
+[----------] 2 tests from ExpectAssert (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 2 tests from 1 test suite ran. (0 ms total)
+[  PASSED  ] 0 tests.
+[  FAILED  ] 2 tests, listed below:
+[  FAILED  ] ExpectAssert.Expect1
+[  FAILED  ] ExpectAssert.Assert1
+
+ 2 FAILED TESTS
+```
+
+可以看到，这两个用例都失败了，根据错误信息中给出的失败行号，在第一个用例（`ExpectAssert.Expect1`）中，失败的是`EXPECT_EQ(1, 2);  EXPECT_EQ(3, 4);`，这是两个期望，即在前一个期望失败后，不会停止当前函数（测试用例）的执行，会继续往后，走到后面的下一个期望，继续判断
+
+而在第二个用例（`ExpectAssert.Assert1`）中，失败显示的信息中，只有`ASSERT_EQ(1, 2);`并没有该用例中的下一个断言，因此可以得出结论，==在断言失败时，后面的逻辑并不会继续执行==
+
+再执行测试2，将期望和断言，放在一个子函数中 场景2
+
+```bash
+build$ ./expect_assert --gtest_filter='*.*2'
+Running main() from /home/will/lesson/gTest/googletest/googletest/src/gtest_main.cc
+Note: Google Test filter = *.*2
+[==========] Running 2 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 2 tests from ExpectAssert
+[ RUN      ] ExpectAssert.Expect2
+/home/will/lesson/gTest/16.expect_assert/expect_assert.cpp:14: Failure
+Expected equality of these values:
+  1
+  2
+
+/home/will/lesson/gTest/16.expect_assert/expect_assert.cpp:15: Failure
+Expected equality of these values:
+  3
+  4
+
+/home/will/lesson/gTest/16.expect_assert/expect_assert.cpp:25: Failure
+Expected equality of these values:
+  5
+  6
+
+[  FAILED  ] ExpectAssert.Expect2 (0 ms)
+[ RUN      ] ExpectAssert.Assert2
+/home/will/lesson/gTest/16.expect_assert/expect_assert.cpp:19: Failure
+Expected equality of these values:
+  0
+  2
+
+/home/will/lesson/gTest/16.expect_assert/expect_assert.cpp:30: Failure
+Expected equality of these values:
+  5
+  6
+
+[  FAILED  ] ExpectAssert.Assert2 (0 ms)
+[----------] 2 tests from ExpectAssert (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 2 tests from 1 test suite ran. (0 ms total)
+[  PASSED  ] 0 tests.
+[  FAILED  ] 2 tests, listed below:
+[  FAILED  ] ExpectAssert.Expect2
+[  FAILED  ] ExpectAssert.Assert2
+
+ 2 FAILED TESTS
+```
+
+对于期望`expect`来说，都是失败的，也不会影响用例中后面其他语句的执行，子函数中的期望失败，也不会影响到外部后序语句的执行
+
+而对于断言`assert`来说，根据上面的失败信息来看，失败后，会影响到后面语句的执行，上面代码的`sub_routine_assert()`中`ASSERT_EQ(0, 2);   ASSERT_EQ(3, 4);`前一个断言失败后，直接退出了该函数，没有执行后面的断言，但是却执行了用例2`Assert2`中的`ASSERT_EQ(5, 6)`，因此，可以得出结论，==当断言`assert`失败时，会中断当前的函数执行，并不会中断整个测试用例==
+
+那么给断言再加上作用域呢？
+
+```cpp
+void sub_routine_assert() {
+    {
+        ASSERT_EQ(-1, 1);
+        ASSERT_EQ(-2, 0);
+    }
+    ASSERT_EQ(0, 2);
+    ASSERT_EQ(3, 4);
+}
+```
+
+重新生成二进制文件，打印结果
+
+```bash
+build$ ./expect_assert --gtest_filter='*.Assert2'
+Running main() from /home/will/lesson/gTest/googletest/googletest/src/gtest_main.cc
+Note: Google Test filter = *.Assert2
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from ExpectAssert
+[ RUN      ] ExpectAssert.Assert2
+/home/will/lesson/gTest/16.expect_assert/expect_assert.cpp:20: Failure
+Expected equality of these values:
+  -1
+  1
+
+/home/will/lesson/gTest/16.expect_assert/expect_assert.cpp:34: Failure
+Expected equality of these values:
+  5
+  6
+
+[  FAILED  ] ExpectAssert.Assert2 (0 ms)
+[----------] 1 test from ExpectAssert (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (0 ms total)
+[  PASSED  ] 0 tests.
+[  FAILED  ] 1 test, listed below:
+[  FAILED  ] ExpectAssert.Assert2
+
+ 1 FAILED TEST
+```
+
+可以看到，结论同上，作用域并不会改变断言失败后后序语句的执行，终止的仍然是函数的执行，而不是当前作用域
+
+
+
+### 十七、断言传播
+
+断言会在失败时，会终止当前函数的执行。但是现在希望，当子函数中发生错误时，就直接终止整个测试用例，而不用执行后面的语句
+
+`ASSERT_NO_FATAL_FAILURE` 是 Google Test 中的一种断言，它的作用是执行一个代码块（通常是一个函数），并确保该代码块**没有引发任何致命失败**。
+
+- 如果代码块中的任何 `ASSERT_*` 断言失败（如 `ASSERT_EQ`、`ASSERT_TRUE`、`ASSERT_FALSE` 等），测试用例会立即终止，并且测试失败。
+- 如果代码块中的断言失败，但它们不是“致命失败”类型（比如 `EXPECT_*`），则 `ASSERT_NO_FATAL_FAILURE` 允许测试继续。
+
+```cpp
+void fail_routine() {
+    ASSERT_EQ(1, 2);
+}
+
+TEST(TestOnSubroutine, ShouldFail) {
+    ASSERT_NO_FATAL_FAILURE(fail_routine());
+    ASSERT_EQ(3, 4);
+}
+```
+
+这个 `fail_routine()` 函数包含一个 `ASSERT_EQ(1, 2)` 断言，它检查 1 是否等于 2。显然，这个断言会失败，因为 `1 != 2`。
+
+- `ASSERT_EQ` 失败后，`fail_routine()` 函数会立即终止执行，测试用例也会中断。因此，这个函数会在执行时引发一个失败并停止。
+
+在后面的测试用例中，包含两个断言：
+
+1. `ASSERT_NO_FATAL_FAILURE(fail_routine())`
+
+    尽管 `fail_routine()` 中的 `ASSERT_EQ(1, 2)` 会失败并中断，但是 `ASSERT_NO_FATAL_FAILURE` 会捕获到这个失败并继续执行，确保整个测试用例没有提前终止（这就是它的作用）。这意味着，如果 `fail_routine()` 中的失败没有导致致命错误（如测试提前终止），`ASSERT_NO_FATAL_FAILURE` 会通过。
+
+2. `ASSERT_EQ(3, 4)`
+
+    - 这个断言检查 3 是否等于 4，显然它会失败，因为 3 不等于 4。
+    - 这个失败将导致测试用例的失败，且会阻止测试继续执行，因为 `ASSERT` 失败会立即终止当前测试用例的执行。
+
+整个流程为：`fail_routine()` 调用后，`ASSERT_EQ(1, 2)` 失败，`ASSERT_NO_FATAL_FAILURE` 捕获失败并确认这是`assert`失败引起的致命失败后，会==阻止测试继续执行==。因此，后面的的`ASSERT_EQ(3, 4)` 并不会被执行。即，`fail_routine()` 的失败会导致测试提前终止，因为它的失败是`assert`失败引起的`fatal failure`
+
+```bash
+build$ ./assert_spread 
+Running main() from /home/will/lesson/gTest/googletest/googletest/src/gtest_main.cc
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from TestOnSubroutine
+[ RUN      ] TestOnSubroutine.ShouldFail
+/home/will/lesson/gTest/17.assert_spread/test_subroutine.cpp:4: Failure
+Expected equality of these values:
+  1
+  2
+
+/home/will/lesson/gTest/17.assert_spread/test_subroutine.cpp:8: Failure
+Expected: fail_routine() doesn't generate new fatal failures in the current thread.
+  Actual: it does.
+
+[  FAILED  ] TestOnSubroutine.ShouldFail (0 ms)
+[----------] 1 test from TestOnSubroutine (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (0 ms total)
+[  PASSED  ] 0 tests.
+[  FAILED  ] 1 test, listed below:
+[  FAILED  ] TestOnSubroutine.ShouldFail
+
+ 1 FAILED TEST
+```
+
+当你希望验证一个函数或代码块的执行是否稳定，但不希望其中的错误立即终止测试，`ASSERT_NO_FATAL_FAILURE` 可以帮助捕获并报告错误，而不干扰其他测试验证。例如，你可能在测试一个库函数，某些错误可能是非致命的，只是需要在日志中记录，而不会影响其他测试用例的执行。
+
+
+
+### 十八、用例间资源共享
+
+很多资源只需要在用例执行期间，只初始化一次，在所有用例执行完后，再进行销毁
+
+```cpp
+class SharedResource : public testing::Test
+{
+public:
+    static int *ptr;
+public:
+    static void SetUpTestSuite() {
+        std::cout << "SetUpTestSuite \n";
+        ptr = new int(100);
+    }
+    static void TearDownTestSuite() {
+        std::cout << "TearDownTestSuite \n";
+        delete ptr;
+        ptr = nullptr;
+    }
+};
+
+int *SharedResource::ptr = nullptr;
+```
+
+`SharedResource` 是一个测试基类，所有基于它的测试用例将共享 `SetUpTestSuite` 和 `TearDownTestSuite` 的逻辑
+
+其中`ptr` 是一个静态成员变量，因此它在所有使用 `SharedResource` 的测试用例中共享。它被 `SetUpTestSuite` 初始化，并在 `TearDownTestSuite` 中清理。定义并初始化了静态成员变量 `ptr`要在类外进行
+
+- `SetUpTestSuite()` 是 Google Test 提供的钩子函数，在**整个测试套件运行前**调用一次。
+- `TearDownTestSuite()` 在**整个测试套件运行结束后**调用一次，用于清理共享资源。
+
+这两个函数对静态成员变量进行操作，因此适用于共享数据的场景。
+
+```cpp
+TEST_F(SharedResource, case1) {
+    ASSERT_EQ(100, *SharedResource::ptr);
+}
+
+TEST_F(SharedResource, case2) {
+    ASSERT_EQ(100, *SharedResource::ptr);
+}
+```
+
+1. `TEST_F` 是 Google Test 用于基于测试基类的测试用例定义宏。
+    - `SharedResource` 是基类，所有 `TEST_F` 定义的测试用例都会继承它的逻辑。
+    - 因为 `ptr` 是静态成员，所有测试用例都共享 `ptr`，可以直接访问它。
+2. **`case1` 和 `case2` 的逻辑：**
+    - 两个测试用例都验证了 `ptr` 指向的值是否为 `100`。
+    - 由于 `SetUpTestSuite` 在整个测试套件运行之前只调用一次，所以 `ptr` 的值在两个测试用例中都是一致的。
+
+上面代码的运行流程：
+
+1. 测试框架初始化：
+    - 调用`SetUpTestSuite()`：先输出 `"SetUpTestSuite \n"`。再分配一块内存，并将 `ptr` 指向值为 `100` 的整数。
+2. 执行测试用例：
+    - 运行`case1`：访问 `SharedResource::ptr`，检查值是否为 `100`。如果值为 `100`，断言通过，测试成功。
+    - 运行`case2`：同样访问 `SharedResource::ptr`，检查值是否为 `100`。断言通过，测试成功。
+3. 测试框架清理：
+    - 调用`TearDownTestSuite()`：输出 `"TearDownTestSuite \n"`。释放 `ptr` 指向的内存并将其置为 `nullptr`，防止内存泄漏。
+
+```bash
+build$ ./shared_res 
+Running main() from /home/will/lesson/gTest/googletest/googletest/src/gtest_main.cc
+[==========] Running 2 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 2 tests from SharedResource
+SetUpTestSuite 
+[ RUN      ] SharedResource.case1
+[       OK ] SharedResource.case1 (0 ms)
+[ RUN      ] SharedResource.case2
+[       OK ] SharedResource.case2 (0 ms)
+TearDownTestSuite 
+[----------] 2 tests from SharedResource (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 2 tests from 1 test suite ran. (0 ms total)
+[  PASSED  ] 2 tests.
+```
+
+#### **为什么使用 `SetUpTestSuite` 和 `TearDownTestSuite`？**
+
+- 当多个测试用例需要共享相同的资源（如内存、文件、数据库连接等）时，可以通过 `SetUpTestSuite` 在整个测试套件开始时初始化这些资源，并通过 `TearDownTestSuite` 在结束时清理资源。
+- 这样避免了在每个测试用例中重复初始化和清理资源，提高了效率。
+
+#### **`TEST_F` 的作用？**
+
+- `TEST_F` 表示基于一个测试基类的测试用例，允许在测试用例中共享基类的初始化和清理逻辑。
+
+#### **静态变量的作用？**
+
+- 静态变量的生命周期贯穿整个测试套件，确保资源在多个测试用例之间共享。
+
+> 对于上述代码的改进：
+>
+> 检查 `ptr` 的非空性： 在使用`*ptr`之前，可以添加一个断言确保`ptr`不为`nullptr`，以避免解引用空指针导致的运行时错误。
+>
+> ```cpp
+> ASSERT_NE(nullptr, SharedResource::ptr);
+> ```
+>
+> **使用智能指针（如 `std::unique_ptr`）**： 这样可以避免手动管理内存，提高代码的安全性和可维护性。
+
+
+
+### 十九、命令行选项
+
+要支持命令行选项，首先需要能够接收到命令行传入的参数，那么就需要在`main()`中加入`argc`和`argv`，使用带参的`main()`来解析命令行
+
+```cpp
+int main(int argc, char **argv) {
+    testing::InitGoogleTest(&argc, argv);
+    return RUN_ALL_TESTS();
+}
+```
+
+用于测试的测试用例
+
+```cpp
+```
+
+在生成可执行文件后，通过`--help`来查看可用的命令行选项
+
+```bash
+build$ ./command_line --help
+This program contains tests written using Google Test. You can use the
+following command line flags to control its behavior:
+
+Test Selection:
+  --gtest_list_tests
+      List the names of all tests instead of running them. The name of
+      TEST(Foo, Bar) is "Foo.Bar".
+  --gtest_filter=POSITIVE_PATTERNS[-NEGATIVE_PATTERNS]
+      Run only the tests whose name matches one of the positive patterns but
+      none of the negative patterns. '?' matches any single character; '*'
+      matches any substring; ':' separates two patterns.
+  --gtest_also_run_disabled_tests
+      Run all disabled tests too.
+
+Test Execution:
+  --gtest_repeat=[COUNT]
+      Run the tests repeatedly; use a negative count to repeat forever.
+  --gtest_shuffle
+      Randomize tests' orders on every iteration.
+  --gtest_random_seed=[NUMBER]
+      Random number seed to use for shuffling test orders (between 1 and
+      99999, or 0 to use a seed based on the current time).
+  --gtest_recreate_environments_when_repeating
+      Sets up and tears down the global test environment on each repeat
+      of the test.
+
+Test Output:
+  --gtest_color=(yes|no|auto)
+      Enable/disable colored output. The default is auto.
+  --gtest_brief=1
+      Only print test failures.
+  --gtest_print_time=0
+      Don't print the elapsed time of each test.
+  --gtest_output=(json|xml)[:DIRECTORY_PATH/|:FILE_PATH]
+      Generate a JSON or XML report in the given directory or with the given
+      file name. FILE_PATH defaults to test_detail.xml.
+  --gtest_stream_result_to=HOST:PORT
+      Stream test results to the given server.
+
+Assertion Behavior:
+  --gtest_death_test_style=(fast|threadsafe)
+      Set the default death test style.
+  --gtest_break_on_failure
+      Turn assertion failures into debugger break-points.
+  --gtest_throw_on_failure
+      Turn assertion failures into C++ exceptions for use by an external
+      test framework.
+  --gtest_catch_exceptions=0
+      Do not report exceptions as test failures. Instead, allow them
+      to crash the program or throw a pop-up (on Windows).
+
+Except for --gtest_list_tests, you can alternatively set the corresponding
+environment variable of a flag (all letters in upper-case). For example, to
+disable colored text output, you can either specify --gtest_color=no or set
+the GTEST_COLOR environment variable to no.
+
+For more information, please read the Google Test documentation at
+https://github.com/google/googletest/. If you find a bug in Google Test
+(not one in your own code or tests), please report it to
+<googletestframework@googlegroups.com>.
+```
+
+打印当前测试程序中，有哪些测试套件和测试用例
+
+```bash
+build$ ./command_line --gtest_list_tests
+FooTest.
+  Foo1
+  Foo2
+BarTest.
+  Bar1
+  Bar2
+```
+
+对于上面的测试用例，可以有选择的执行，可以选择具体的测试用例，同时也支持通配符，在使用通配符时需要使用引号，因为`*`会被shell扩展。也支持使用`-`排除不想执行的用例
+
+```bash
+build$ ./command_line --gtest_filter=FooTest.Foo1
+Note: Google Test filter = FooTest.Foo1
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from FooTest
+[ RUN      ] FooTest.Foo1
+[       OK ] FooTest.Foo1 (0 ms)
+[----------] 1 test from FooTest (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (0 ms total)
+[  PASSED  ] 1 test.
+
+
+build$ ./command_line --gtest_filter='BarTest.Bar*-*2'
+Note: Google Test filter = BarTest.Bar*-*2
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from BarTest
+[ RUN      ] BarTest.Bar1
+[       OK ] BarTest.Bar1 (0 ms)
+[----------] 1 test from BarTest (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (0 ms total)
+[  PASSED  ] 1 test.
+```
+
+
+
