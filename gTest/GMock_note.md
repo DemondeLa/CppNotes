@@ -892,3 +892,289 @@ Actual function call count doesn't match EXPECT_CALL(calc, Work)...
 ```
 
 **`InSequence` 的作用**：强制要求 `EXPECT_CALL(calc, Do)` 必须在 `EXPECT_CALL(calc, Work)` 之前执行。
+
+
+
+### 七、处理模板类型
+
+`MOCK_METHOD` 是 Google Mock 用于模拟类成员函数的宏。它的标准格式是
+
+```cpp
+MOCK_METHOD(return_type, method_name, (args...), (attributes));
+// return_type：方法的返回类型；
+// method_name：方法名；
+// (args...)：参数列表；
+// (attributes)：方法的属性（例如 override）
+```
+
+Google Mock 宏的参数解析是基于括号和逗号来分割的。如果你使用括号包裹返回类型（即 `std::map<int, int>`），这实际上是允许你将类型作为第一个参数传入宏，接下来才是方法名称、参数列表和属性。
+
+`EXPECT_CALL` 是 Google Mock 用于设置期望的方法调用
+
+```cpp
+class MakeMap 
+{
+public:
+    virtual std::map<int, int> make1() = 0;
+    virtual std::map<int, int> make2() = 0;
+};
+
+class MockMakeMap : public MakeMap
+{
+public:
+    MOCK_METHOD((std::map<int, int>), make1, (), (override));
+
+    using ReturnType = std::map<int, int>;
+    MOCK_METHOD(ReturnType, make2, (), (override));
+};
+```
+
+`MockMakeMap` 类继承自 `MakeMap`，并使用 Google Mock 提供的 `MOCK_METHOD` 宏来模拟 `MakeMap` 类中的 `make1` 和 `make2` 方法
+
+- 第一个 `MOCK_METHOD` 用来模拟 `make1()` 方法，返回类型为 `std::map<int, int>`，且不接受任何参数`()`，`(override)` 表示这个方法是重写自基类 `MakeMap` 的方法。
+
+    > 如果写成：`MOCK_METHOD(std::map<int, int>, make1, (), (override));`会出现变异错误，因为`MOCK_METHOD`是一个宏，其中的参数就会以`,`分隔，当类型中出现逗号时，编译器会认为`std::map<int`是第一个参数，接收了5个参数，就会出现问题。
+    >
+    > 因此这里通过这种加`()`的方式，或者下面给类型起别名的方式
+
+- 第二个 `MOCK_METHOD` 用来模拟 `make2()` 方法，返回类型为 `ReturnType`（它是 `std::map<int, int>` 的别名）。
+
+    **`using ReturnType = std::map<int, int>;`**：这行代码定义了一个类型别名 `ReturnType`，它指代 `std::map<int, int>` 类型。这使得之后的代码更加简洁和易于维护。使用 `ReturnType` 来代替 `std::map<int, int>` 使得代码更具可读性和灵活性，特别是在类型可能发生变化的情况下
+
+```cpp
+TEST(TestMakeMap, Case1)
+{
+    MockMakeMap makemap;// 创建了 MockMakeMap 类的一个实例
+    // 此时，make1() 和 make2() 方法已经被模拟
+    EXPECT_CALL(makemap, make1);
+    EXPECT_CALL(makemap, make2);
+    
+    makemap.make1();     
+    makemap.make2(); 
+}
+```
+
+`TEST(TestMakeMap, Case1)` 定义了一个 Google Test 测试用例，其中 `TestMakeMap` 是测试用例的名称，`Case1` 是测试的具体名称
+
+`EXPECT_CALL(makemap, make1);` 和 `EXPECT_CALL(makemap, make2);`：这两行代码使用 Google Mock 的 `EXPECT_CALL` 宏来声明期望。
+
+- `EXPECT_CALL(makemap, make);` 只是设定了期望，并没有指定具体的行为或返回值。如果需要指定返回值，通常会使用 `WillOnce` 或 `WillRepeatedly` 等方法
+
+- `EXPECT_CALL(makemap, make1)` 表示在接下来的代码执行过程中，`make1` 方法应该被调用一次。
+- 同样，`EXPECT_CALL(makemap, make2)` 表示 `make2` 方法也应该被调用一次。
+
+`makemap.make1();` 和 `makemap.make2();`：
+
+- 实际调用了 `make1()` 和 `make2()` 方法。此时，Google Mock 会检查这两个方法是否按照预期被调用。
+- 由于在 `EXPECT_CALL` 中设定了期望，因此，如果这两个方法没有被调用，或者被调用次数不符，测试将失败。
+
+```bash
+Running main() from /home/will/lesson/gTest/googletest/googletest/src/gtest_main.cc
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from TestMakeMap
+[ RUN      ] TestMakeMap.Case1
+[       OK ] TestMakeMap.Case1 (0 ms)
+[----------] 1 test from TestMakeMap (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (0 ms total)
+[  PASSED  ] 1 test.
+```
+
+
+
+### 八、模拟私有成员函数
+
+Mock一个私有成员函数和Mock一个公有的是完全一致的。
+
+`MOCK_METHOD`其实是对成员函数的重写，虽然基类是`prvate`的，但是可以在派生类中设置公共的，因此没有区别
+
+```cpp
+class MakeMap 
+{
+private:
+    virtual std::map<int, int> make1() = 0;
+    virtual std::map<int, int> make2() = 0;
+};
+
+class MockMakeMap : public MakeMap
+{
+public:
+    MOCK_METHOD((std::map<int, int>), make1, (), (override));
+
+    using ReturnType = std::map<int, int>;
+    MOCK_METHOD(ReturnType, make2, (), (override));
+};
+
+TEST(TestMakeMap, Case1)
+{
+    MockMakeMap makemap;
+    EXPECT_CALL(makemap, make1);
+    EXPECT_CALL(makemap, make2);
+
+    makemap.make1();
+    makemap.make2();
+}
+```
+
+```bash
+Running main() from /home/will/lesson/gTest/googletest/googletest/src/gtest_main.cc
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from TestMakeMap
+[ RUN      ] TestMakeMap.Case1
+[       OK ] TestMakeMap.Case1 (0 ms)
+[----------] 1 test from TestMakeMap (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (0 ms total)
+[  PASSED  ] 1 test.
+```
+
+通过顺利编译并执行。
+
+因此成员的属性，无论是`public`、`protected`或是`private`对于gmock来说，是没有什么区别的
+
+
+
+### 九、模拟重载函数
+
+
+
+```cpp
+class Calc
+{
+public:
+    virtual int calc(int a) = 0;
+    virtual int calc(int a, int b) = 0;
+    virtual int calc(int a) const = 0; // 声明为 const，即该方法不会修改对象的状态
+    virtual int calc(double a) = 0;
+};
+
+int UseCalc(Calc &c, int a) {
+    return c.calc(a);
+}
+
+int UseCalc(Calc &c, int a, int b) {
+    return c.calc(a, b);
+}
+
+int UseCalc(const Calc &c, int a) {
+    return c.calc(a);
+}
+
+int UseCalc(Calc &c, double a) {
+    return c.calc(a);
+}
+```
+
+这里定义了一个抽象类 `Calc`，包含了四个虚拟函数 `calc`，每个方法有不同的参数或常量修饰符
+
+以及不同的`UseCal`函数用于调用 `Calc` 类的不同 `calc` 方法。这些重载函数通过不同的参数组合调用 `Calc` 类的 `calc` 方法。根据参数类型的不同，分别调用 `calc(int)`、`calc(int, int)`、`calc(double)` 或 `calc(int) const`。
+
+其中`const Calc &c`用于处理传递给 `UseCalc` 的 `const` 对象，保证方法在不修改对象状态的情况下调用。
+
+```cpp
+class MockCalc : public Calc
+{
+public:
+    MOCK_METHOD(int, calc, (int a), (override));
+    MOCK_METHOD(int, calc, (int a, int b), (override));
+    MOCK_METHOD(int, calc, (int a), (const,override));
+    MOCK_METHOD(int, calc, (double a), (override));
+};
+```
+
+`MockCalc` 类继承自 `Calc`，并用 `MOCK_METHOD` 宏模拟 `Calc` 类的各个 `calc` 方法。
+
+- 每个 `MOCK_METHOD` 对应于 `Calc` 中的一个虚拟函数，并且通过 `(override)` 修饰符指示这是对基类方法的重写。
+
+- `MOCK_METHOD(int, calc, (int a), (const, override));` 对应 `calc(int a) const`，这是一个常量成员函数，它承诺不会修改对象的状态。
+
+    > 在 C++ 中，`const` 对象是不能调用非 `const` 成员函数的。这是因为非 `const` 成员函数可能会修改对象的状态，而 `const` 对象承诺不修改其状态，因此不能调用可能修改对象状态的成员函数
+    >
+    > > ==**为什么 `const` 对象不能调用非 `const` 成员函数？**==
+    > >
+    > > - **编译器的检查**：编译器通过 `const` 成员函数来确保对象的状态不会发生变化。当你声明一个对象为 `const`，编译器会检查它只能调用那些保证不会修改对象状态的 `const` 成员函数。
+    > > - **对象状态保护**：`const` 对象的目的是确保对象的状态不可更改。如果允许 `const` 对象调用非 `const` 成员函数，则意味着你有可能修改 `const` 对象的状态，这会破坏 `const` 的语义。
+
+```cpp
+using testing::_;
+using testing::An; 
+using testing::Const;
+using testing::Return;
+```
+
+`_` 是 Google Mock 中的一个占位符，用来表示匹配任何类型的参数。它常用于设置期望值时不关心某个参数的具体值，意味着该参数可以是任意值。**应用场景**： 当你不关心某个参数的具体值，只关心该方法是否被调用或是否按照某种方式调用时，可以使用 `_` 来代替实际的值。比如，你只关心函数是否被调用，而不在意传递的参数是什么。
+
+`An<Type>()` 是 Google Mock 中的一种参数匹配器，用于表示匹配某种特定类型的值。`An<Type>` 用来匹配某个特定类型的参数，无论该类型的值是什么。它相当于一个类型过滤器。**应用场景**： 当你希望精确匹配某种类型的参数，而不关心它的具体值时，可以使用 `An<Type>()`。这种方式比使用 `_` 更具类型约束性，因为它明确了匹配的参数类型。
+
+`Const` 是 Google Mock 中用于匹配常量成员函数的匹配器。它通常用于模拟 **const** 成员函数的调用。默认情况下，`EXPECT_CALL` 只适用于非 `const` 成员函数，若想对 `const` 成员函数进行模拟，必须使用 `Const()` 匹配器。**应用场景**： 当你模拟一个对象的常量成员函数（即声明为 `const` 的成员函数）时，必须使用 `Const()`。否则，Google Mock 将无法正确匹配该成员函数。
+
+`Return(value)` 是 Google Mock 中的一个动作（Action），它指定当某个模拟方法被调用时返回一个特定的值。这个值可以是常量、对象、指针等。**应用场景**： `Return` 用于设置方法调用的返回值，可以用于模拟方法的返回行为。当你希望模拟一个函数的返回值时，`Return()` 是必不可少的工具。
+
+```cpp
+TEST(TestCalc, Case1) 
+{
+    MockCalc calc;
+    EXPECT_CALL(calc, calc(An<int>())).Times(1).WillRepeatedly(Return(1));
+    /*
+	这个期望设置 calc 对象的 calc(int) 方法会被调用，且返回值为 1。
+		An<int>() 是一个匹配器，表示接受任何一个整数值。
+		Times(1) 表示该方法应该被调用一次。
+		WillRepeatedly(Return(1)) 表示每次调用时都返回 1。
+		如果是WillOnce(Return(1)) 表示第一次调用时返回 1
+    */
+    EXPECT_CALL(calc, calc(An<int>(), An<int>())).Times(2).WillRepeatedly(Return(2));
+    /*
+    这里模拟了 calc(int, int) 方法的调用，(An<int>(), An<int>()) 表示接受任意两个整数参数，(_, _) 这种写法也可以。
+    	Times(2) 表示这个方法应该被调用两次，WillRepeatedly(Return(2)) 表示每次调用时返回 2。
+    */
+
+    const MockCalc calc2;
+    EXPECT_CALL(Const(calc2), calc(_)).Times(1).WillRepeatedly(Return(3));
+    /*
+    这里模拟了一个 const 对象上的 calc(int) 方法。
+    注意，这里使用 Const(calc2) 来表明 calc2 是一个 const 对象；如果没有用Const修饰，在宏替换后，值传递的可能就是非const对象了
+    	这个期望设置 calc(int) 方法在 const 对象上的调用应该返回 3
+    */
+
+    EXPECT_CALL(calc, calc(An<double>())).Times(1).WillRepeatedly(Return(4));
+    /*
+    这里模拟了 calc(double) 方法的调用，An<double>() 表示接受任何 double 类型的参数。
+    Times(1) 表示这个方法应该被调用一次，WillRepeatedly(Return(4)) 表示每次调用时返回 4。
+    */
+
+    EXPECT_EQ(UseCalc(calc, 1), 1);
+    EXPECT_EQ(UseCalc(calc, 2, 3), 2);
+    EXPECT_EQ(UseCalc(calc, 0, -1), 2);
+    EXPECT_EQ(UseCalc(calc2, 3), 3);
+    EXPECT_EQ(UseCalc(calc, 3.14), 1);
+}
+```
+
+在 `TEST(TestCalc, Case1)` 中，调用了不同版本的 `UseCalc`，这些版本分别调用了 `calc(int)`、`calc(int, int)`、`calc(double)` 和 `calc(int) const`。
+
+每次调用都会触发相应的 `EXPECT_CALL`，并验证返回值是否与期望一致
+
+```cpp
+Running main() from /home/will/lesson/gTest/googletest/googletest/src/gtest_main.cc
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from TestCalc
+[ RUN      ] TestCalc.Case1
+[       OK ] TestCalc.Case1 (0 ms)
+[----------] 1 test from TestCalc (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (0 ms total)
+[  PASSED  ] 1 test.
+```
+
+gmock中为了区分多个重载函数，其规则和重载函数的规则一致，根据参数的类型、数量、属性判断。
+
+
+
+### 十、处理模板类
+
