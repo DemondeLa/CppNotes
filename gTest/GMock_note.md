@@ -1178,3 +1178,597 @@ gmock中为了区分多个重载函数，其规则和重载函数的规则一致
 
 ### 十、处理模板类
 
+对模板类进行mock的方法很简单，即对模板类使用具体的类型进行实例化
+
+```cpp
+template <typename Number>
+class Calc
+{
+public:
+    virtual Number calc(Number a, Number b) = 0;
+};
+
+template <typename Number>
+class MockCalc : public Calc<Number>
+{
+public:
+    MOCK_METHOD(Number, calc, (Number a, Number b));
+};
+```
+
+`MockCalc` 继承自 `Calc`，用于 **模拟** `Calc` 的行为
+
+```
+MOCK_METHOD(Number, calc, (Number a, Number b));
+```
+
+- 这是 Google Mock 的 **宏**，用于定义一个模拟方法。
+- `MOCK_METHOD(返回类型, 方法名, (参数列表))` 让 Google Mock 生成一个虚拟方法，并支持断言。
+
+```cpp
+TEST(TestCalc, Case1) {
+    MockCalc<int> calc;
+    EXPECT_CALL(calc, calc);
+
+    calc.calc(1, 2);
+}
+
+TEST(TestCalc, Case2) {
+    MockCalc<double> calc;
+    EXPECT_CALL(calc, calc);
+
+    calc.calc(2.1, 3.4);
+}
+```
+
+这里 `MockCalc<int>` 表示 `calc` 方法的 `Number` 类型为 `int`。MockCalc<double>` 指定 `Number` 类型为 `double
+
+```
+EXPECT_CALL(calc, calc);
+```
+
+- 这是 Google Mock 提供的 **预期调用** 机制。
+- 这行代码表示我们 **期望** `calc.calc()` **至少被调用一次**。
+- 若 `calc.calc()` 没有被调用，测试会失败。
+
+> `MOCK_METHOD` 让 `MockCalc` 继承 `Calc`，但不需要真正实现 `calc` 方法，而是 **由 Google Mock 生成一个 Mock 版本**，允许：
+>
+> - **设置期望调用**（`EXPECT_CALL`）
+> - **返回特定值**
+> - **记录调用次数**
+> - **检查调用参数**
+
+```bash
+Running main() from /home/will/lesson/gTest/googletest/googletest/src/gtest_main.cc
+[==========] Running 2 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 2 tests from TestCalc
+[ RUN      ] TestCalc.Case1
+[       OK ] TestCalc.Case1 (0 ms)
+[ RUN      ] TestCalc.Case2
+[       OK ] TestCalc.Case2 (0 ms)
+[----------] 2 tests from TestCalc (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 2 tests from 1 test suite ran. (0 ms total)
+[  PASSED  ] 2 tests.
+```
+
+
+
+### 十一、模拟非虚函数
+
+gmock是不支持非虚函数的mock的
+
+```cpp
+class Adder 
+{
+public:
+    int add(int a, int b) {
+        return a + b;
+    }
+};
+
+class MockAdder // 没有继承
+{
+public:
+    MOCK_METHOD(int, add, (int a, int b), ()); // 没有override
+};
+```
+
+ `Adder`类 是一个普通的加法类，提供 `add(int a, int b)` 方法，返回 `a + b`。它没有 **虚函数**，也**没有基类**，因此无法用传统的 **继承+重写** 方式来 Mock。
+
+`MockAdder`这个 Mock 类 **没有继承 `Adder`**，但仍然可以用 `MOCK_METHOD` 来 Mock `add` 方法：
+
+- ```
+    MOCK_METHOD(int, add, (int a, int b), ());
+    ```
+
+    - **第一个参数 `int`**：返回类型
+    - **第二个参数 `add`**：函数名
+    - **第三个参数 `(int a, int b)`**：参数列表
+    - **第四个参数 `()`**：修饰符（这里是空的，表示默认行为）
+
+- 这意味着 `MockAdder` **不依赖继承关系**，仍然能 Mock `add`。
+
+```cpp
+template <typename AdderType>
+int UseAdder(AdderType &adder, int a, int b) {
+    return adder.add(a, b);
+}
+```
+
+`UseAdder` 是一个 **模板函数**，接受一个 `AdderType` 类型的对象，并调用 `adder.add(a, b)` 进行加法计算
+
+由于是 **模板**，它可以接受任何具有 `add` 方法的对象，包括：**普通类**（如 `Adder`）、**Mock 类**（如 `MockAdder`）
+
+```cpp
+using testing::Return;
+TEST(TestAdder, Case) {
+    MockAdder adder; // 创建 Mock 对象
+    EXPECT_CALL(adder, add) // 告诉 Google Mock：预期 adder.add() 方法会被调用
+        .WillOnce(Return(10)); // 指定 add 方法 被调用一次时返回 10
+
+    EXPECT_EQ(UseAdder(adder, 4, 1), 10);
+}
+```
+
+`EXPECT_EQ(UseAdder(adder, 4, 1), 10);`
+
+- 调用 `UseAdder(adder, 4, 1)`，实际上是 `adder.add(4,1)`。
+- 由于 `MockAdder` 受 `EXPECT_CALL` 控制，它返回 **10**。
+- 断言 `UseAdder` 的返回值是否等于 `10`，如果相等，测试通过。
+
+> 传统的 Google Mock 通常要求 Mock 类 **继承基类** 并 **重写虚函数**。其本质上是将虚拟类中的虚函数用`MOCK_METHOD`实现了一下，实现中是各种控制，类似于使用`expect_call`来自定义里面的行为。因此对`MOCK_METHOD`来说，是否是继承来的并没有什么影响
+>
+> 在这里，直接 Mock 了一个普通方法，而 **不需要继承** `Adder`，是 Google Mock 的一项高级用法。
+
+`UseAdder` 使用 **模板**，它不关心 `AdderType` 是 **真实类** 还是 **Mock 类**，只要它有 `add()` 方法就行（有同样的返回值和参数），这样就可以通过Mock类去替换实际的类，进而替换这个函数。甚至，没有`Adder`这个类，程序也依然是能够正常运行的
+
+这让 `UseAdder` 更加 **灵活**：生产代码使用 **真实 `Adder`**，测试代码使用 **Mock `Adder`**
+
+> **为什么这么设计**
+>
+> 1. 普通 `Adder` 没有虚函数，不能直接 Mock
+>
+>     `Adder` 里 `add()` 不是 `virtual`，如果 `MockAdder` **继承** 了 `Adder`，并且 `Adder::add` **不是虚函数**，那么在 `EXPECT_CALL` 之后调用 `adder.add()` 时，它 **不会调用 `MockAdder::add`**，而是调用 `Adder::add`，因为 **C++ 的非虚函数不会进行动态绑定**，Mock 机制无法拦截 **非虚方法**：
+>
+>     ```cpp
+>     class Adder {
+>     public:
+>         int add(int a, int b) { return a + b; } // 不是 virtual
+>     };
+>     ```
+>
+>     **不能直接继承 `Adder`，否则 Mock 失效。**
+>
+>     > C++ 的 **非虚函数** **不会** 进行 **动态绑定（Dynamic Dispatch）**
+>     >
+>     > `MockAdder::add` 虽然使用了 `MOCK_METHOD`，但 `Adder::add` **不是虚函数**，调用 `adder.add(4, 1)` 时：
+>     >
+>     > - **编译器会进行静态绑定，直接调用 `Adder::add`，绕过 `MockAdder::add`**
+>     > - Google Mock 只能拦截 **虚函数**，但这里 `Adder::add` 不是 `virtual`，所以不会生效
+>     >
+>     > 当 `adder.add(4, 1)` 被调用时：
+>     >
+>     > - **如果 `Adder::add` 是虚函数**，C++ 会走 **虚函数表（vtable）**，从而调用 `MockAdder::add`
+>     > - **但 `Adder::add` 不是虚函数**，所以 C++ 直接调用 `Adder::add`，Google Mock 无法拦截
+>
+> 2. 用 `MockAdder` 替代 `Adder`
+>
+>     由于 `UseAdder` **使用模板**，它可以接受 `MockAdder`，这就绕过了 **继承** 的问题。
+>
+>     这样，我们就可以 **Mock 非虚函数**，灵活测试 `UseAdder`
+>
+> | 重点                   | 解释                                                         |
+> | ---------------------- | ------------------------------------------------------------ |
+> | **不需要继承 `Adder`** | `MockAdder` 直接使用 `MOCK_METHOD` Mock `add`，不继承 `Adder` |
+> | **模板使代码更灵活**   | `UseAdder` 采用模板，既能接受 `Adder`，也能接受 `MockAdder`  |
+> | **Mock 非虚函数**      | `Adder::add` 不是 `virtual`，无法传统 Mock，只能用模板技巧   |
+> | **Google Mock 实现**   | `EXPECT_CALL` 设定 `add` 返回值，确保测试通过                |
+
+**如果 `Adder::add` 不是虚函数，Google Mock 不能拦截调用，因为 C++ 进行的是** **静态绑定**，必须用 `virtual` 让它走 **动态绑定** 才能生效。
+
+```bash
+Running main() from /home/will/lesson/gTest/googletest/googletest/src/gtest_main.cc
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from TestAdder
+[ RUN      ] TestAdder.Case
+[       OK ] TestAdder.Case (0 ms)
+[----------] 1 test from TestAdder (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (0 ms total)
+[  PASSED  ] 1 test.
+```
+
+
+
+### 十二、处理自由函数
+
+自由函数就是不属于任何类的函数，即非类的成员函数
+
+
+
+```cpp
+int add(int a, int b) {
+    return a + b;
+}
+
+class AddInterface
+{
+public:
+    virtual int add(int a, int b) {
+        // 定义成虚函数，使得可以在子类中重写它以实现多态性
+        return ::add(a, b);
+    }
+};
+```
+
+这里定义成虚函数可以和上面非虚函数对照的理解
+
+```cpp
+class MockAdd : public AddInterface
+{
+public:
+    MOCK_METHOD(int, add, (int a, int b), (override));
+};
+```
+
+MOCK_METHOD 宏：这是 Google Mock 提供的宏，用于生成一个模拟函数。这里的参数分别是：
+
+- 返回类型：`int`
+- 函数名：`add`
+- 参数列表：`(int a, int b)`
+- 附加修饰：`(override)` 表明这个模拟函数是对基类中虚函数的重写。
+
+通过使用 `MockAdd`，我们可以在测试中定义期望（Expectations）和行为（Actions），不必依赖于真正的 `add` 实现，从而更灵活地控制测试环境
+
+```cpp
+int UseAdd(AddInterface &adder, int a, int b) {
+    return adder.add(a, b);
+}
+```
+
+`UseAdd` 接受一个 `AddInterface` 类型的引用（可能是实际的实现或模拟对象）和两个整数，然后调用该接口的 `add` 方法，返回计算结果
+
+这种设计让函数不依赖于具体的实现，只需要接口定义，从而提高了代码的灵活性和测试的方便性（依赖注入）
+
+```cpp
+using testing::Return;
+TEST(TestAdd, Case) {
+    MockAdd adder;
+    EXPECT_CALL(adder, add)
+        .WillOnce(Return(10));
+    EXPECT_EQ(UseAdd(adder, 4, 2), 10);
+}
+```
+
+EXPECT_CALL：
+
+- 设置对 `adder.add` 方法的调用期望。也就是说，当 `adder.add` 被调用时，应该触发设置的行为。
+- `WillOnce(Return(10))` 指定第一次调用时，该方法将返回 `10`。这里是“行为驱动”的模拟设置，用于验证代码在特定输入下的行为，而不是实际进行加法计算。
+
+`EXPECT_EQ(UseAdd(adder, 4, 2), 10);` 调用 `UseAdd` 函数，传入 `adder` 模拟对象和参数 `4, 2`，然后期望结果是 `10`。因为模拟对象的 `add` 方法已经被设置为在第一次调用时返回 `10`，所以测试通过
+
+```bash
+Running main() from /home/will/lesson/gTest/googletest/googletest/src/gtest_main.cc
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from TestAdd
+[ RUN      ] TestAdd.Case
+[       OK ] TestAdd.Case (0 ms)
+[----------] 1 test from TestAdd (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (0 ms total)
+[  PASSED  ] 1 test.
+```
+
+==**总结**==：Google Mock（gmock）确实不支持直接模拟普通函数（即非类成员函数）和非虚函数，因为 gmock 的机制依赖于虚函数的多态性或者在类中的重写行为。为了测试这两种函数，就必须采用一些特殊的策略：
+
+- 普通函数是全局函数或者静态函数，它们没有类的上下文，也就没有虚函数机制。解决这个问题的一种常用方法是**包装（wrap）**这个普通函数：
+    1. 定义一个接口类：这个接口类提供一个虚函数，用来调用实际的普通函数。这样，我们就把普通函数封装在一个可以被继承和重写的接口中
+    2. 编写一个Mock类：这个 Mock 类继承自接口类，并使用 `MOCK_METHOD` 模拟接口中的虚函数
+    3. 依赖注入使用接口：这样，在你的代码中就不要直接调用全局函数 `add`，而是通过接口调用。如上例：在测试时，可以传入 `MockAdd` 对象，然后设定期望和返回值，而在生产环境中可以传入实际实现的对象
+- 非虚函数不能被重写，因为编译时就已经决定了调用哪个函数，这使得 gmock 无法直接拦截调用。解决这个问题的思路一般有两种：
+    1. 使用接口抽象：如果有可能，将非虚函数抽象成一个虚函数接口，然后由实际类实现。这样就可以使用类似于上面普通函数的包装方法来测试。不过这种方法需要修改原有设计，有时可能不适用。
+    2. 使用模板函数进行调用：如果无法修改原有的非虚函数定义，可以采用如下策略：
+        - 定义一个与非虚函数同名的 Mock 类，里面使用 `MOCK_METHOD` 定义一个同名函数。
+        - 编写一个模板函数，这个函数在调用时可以根据传入的类型（真实类或 Mock 类）来调用相应的实现。这样通过依赖注入的方式，你可以在测试时传入 Mock 对象，而在实际运行时传入真实对象。
+
+上面的设计思想（**依赖注入**、**接口抽象**）不仅有助于测试，还能提升代码的灵活性和可维护性。虽然需要额外编写一些包装代码，但在单元测试和模块解耦方面能带来很大的好处。
+
+
+
+### 十三、处理不期望调用的函数
+
+```cpp
+class Calc
+{
+public:
+    virtual int add(int a, int b) = 0;
+    virtual int sub(int a, int b) = 0;
+};
+
+class MockCalc : public Calc
+{
+public:
+    MOCK_METHOD(int, add, (int a, int b), (override));
+    MOCK_METHOD(int, sub, (int a, int b), (override));
+};
+
+TEST(TestAdd, Case1) {
+    MockCalc calc;
+    EXPECT_CALL(calc, add);
+
+    calc.add(1, 1);
+    calc.sub(1, 1);
+}
+```
+
+在上面的测试用例中，对于`add`设置了期望，下面也确实是调用了该函数，但是，在调用`add`的同时，也调用了`sub`这个没有设置预期的函数。对于这种情况（`sub`的调用）：gmock默认会认为这是一个“未预期的调用”，进而**报警告**
+
+```bash
+[ RUN      ] TestAdd.Case1
+
+GMOCK WARNING:
+Uninteresting mock function call - returning default value.
+    Function call: sub(1, 1)
+          Returns: 0
+NOTE: You can safely ignore the above warning unless this call should not happen.  Do not suppress it by blindly adding an EXPECT_CALL() if you don't mean to enforce the call.  See https://github.com/google/googletest/blob/main/docs/gmock_cook_book.md#knowing-when-to-expect-useoncall for details.
+[       OK ] TestAdd.Case1 (0 ms)
+```
+
+在 Case1 中，对 `calc.add(1, 1)` 设置了 `EXPECT_CALL` 但没有对 `calc.sub(1, 1)` 进行任何预期设置。
+
+当调用一个 Mock 函数而没有事先设置对应的 EXPECT_CALL 时，Google Mock 会将这次调用视为“uninteresting”（不感兴趣的调用），然后使用默认返回值（对于整型来说默认为 0）。
+
+提示：如果这个调用本来就不应该发生，那么可能需要检查代码；如果只是你不关心这个调用的结果，就可以忽略这个警告。
+Google Mock 建议不要盲目添加 EXPECT_CALL 来压制警告，除非你确实想要验证这个调用是否发生。
+
+```cpp
+TEST(TestAdd, Case2) {
+    using testing::NiceMock;
+    NiceMock<MockCalc> calc;
+    EXPECT_CALL(calc, add);
+
+    calc.add(1, 1);
+    calc.sub(1, 1);
+}
+```
+
+这里使用了 `NiceMock<MockCalc>` 包装 `calc` 对象。
+
+NiceMock 的作用是**抑制**对未设置 EXPECT_CALL 的调用发出警告。也就是说，即使没有为 `sub` 方法设置预期，NiceMock 也会默默地接受调用，不打印警告信息。
+
+`EXPECT_CALL(calc, add);` 指定了对 `add` 方法的预期，`calc.add(1, 1)` 被调用后满足预期。
+
+对于 `calc.sub(1, 1)` 的调用，由于 NiceMock 的特性，测试不会因为这个未预期调用而发出警告或错误。
+
+```bash
+[ RUN      ] TestAdd.Case2
+[       OK ] TestAdd.Case2 (0 ms)
+```
+
+测试 Case2 更加宽容，适用于你只关注某些方法调用而对其他方法调用不在意时使用
+
+```cpp
+TEST(TestAdd, Case3) {
+    using testing::StrictMock;
+    StrictMock<MockCalc> calc;
+    EXPECT_CALL(calc, add);
+
+    calc.add(1, 1);
+    calc.sub(1, 1);
+}
+```
+
+这里使用了 `StrictMock<MockCalc>` 包装 `calc` 对象。
+
+StrictMock 的作用是对每一个调用都进行严格检查。任何没有明确设置预期的调用都会导致测试失败。
+
+`EXPECT_CALL(calc, add);` 指定了对 `add` 方法的预期，`calc.add(1, 1)` 调用是允许的。
+
+当调用 `calc.sub(1, 1)` 时，因为没有为 `sub` 方法设置 EXPECT_CALL，这个调用被 StrictMock 认为是未预期的，直接报错并导致测试失败。
+
+```bash
+[ RUN      ] TestAdd.Case3
+unknown file: Failure
+Uninteresting mock function call - returning default value.
+    Function call: sub(1, 1)
+          Returns: 0
+
+[  FAILED  ] TestAdd.Case3 (0 ms)
+```
+
+测试 Case3 非常严格，适用于你想确保每个方法调用都被显式验证的场景。这有助于避免漏掉不必要的或意外的调用，但同时也要求测试用例中必须覆盖所有预期的方法调用。
+
+==总结==
+
+- **默认 Mock（Case1）**：会对未预期调用发出警告，但不会导致测试失败。适用于测试中允许某些调用存在，但希望得到提示的情况。
+- **NiceMock（Case2）**：自动抑制未预期调用的警告，使得测试更宽松。如果你只关注部分方法调用的预期，这个模式会让测试日志更干净。
+- **StrictMock（Case3）**：对所有调用进行严格检查，任何未设置预期的调用都会导致测试失败。适用于需要非常严格控制行为的场景。
+
+
+
+### 十四、处理多参数接口
+
+一个函数接口可能有非常多或者是非常复杂的参数，但是我们只需要关注其中的某几个参数或者是哪些简单的参数
+
+```cpp
+class ComplexInterface 
+{
+public:
+    virtual int calc(int a, int b, int c, int d, 
+                     int e, int f, int g, int h, int i) = 0;
+};
+
+class MockComplex : public ComplexInterface
+{
+public:
+    int calc(int a, int b, int c, int d, 
+             int e, int f, int g, int h, int i) {
+        return _calc(a, h);
+    }
+    MOCK_METHOD(int, _calc, (int a, int h), ());
+};
+```
+
+ `MOCK_METHOD(int, _calc, (int a, int h), ());` 是 Google Mock 提供的宏，用来生成一个可被 mock 的方法 `_calc`。这样做可以让我们在测试时设置 `_calc` 方法的期望行为，而无需关心真正的业务逻辑实现
+
+```cpp
+using testing::_; // 通配符，表示匹配任意值
+using testing::Return;
+
+TEST(TestComplex, Case) {
+    MockComplex mcx;
+    EXPECT_CALL(mcx, _calc(_, _))
+        .WillRepeatedly(Return(10));
+    // 这条规则表示：对 mcx 对象的 _calc 方法，任何参数组合的调用都默认返回 10，并且这个行为会一直持续（WillRepeatedly）
+    EXPECT_CALL(mcx, _calc(5, 6))
+        .WillRepeatedly(Return(100));
+    // 这条规则比上面的更具体，当 _calc 方法被以参数 (5, 6) 调用时，将返回 100
+    
+    EXPECT_EQ(mcx.calc(5, 1, 2, 3, 4, 5, 6, 6, 10), 100);
+    EXPECT_EQ(mcx.calc(0, 1, 2, 3, 4, 5, 6, 7, 10), 10);
+}
+```
+
+Google Mock 会根据匹配的具体性来决定使用哪条规则，当多个规则可以匹配时，<u>**更具体的规则（参数匹配更精确的）优先级更高**</u>
+
+```bash
+Running main() from /home/will/lesson/gTest/googletest/googletest/src/gtest_main.cc
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from TestComplex
+[ RUN      ] TestComplex.Case
+[       OK ] TestComplex.Case (0 ms)
+[----------] 1 test from TestComplex (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (0 ms total)
+[  PASSED  ] 1 test.
+```
+
+**总结**：当你面对一个参数非常多的函数，而你只关心其中一两个参数时，可以采用以下策略：
+
+1. **提取关注点**：在被测试函数内部，把真正关心的参数提取出来，转发给一个内部辅助函数。比如上面代码中，`calc` 方法虽然有 9 个参数，但它只把 `a` 和 `h` 传递给了内部的 `_calc` 方法。这种做法使得测试的重点更加明确。
+2. **使用 Mock 辅助方法**：利用 Google Mock 的 `MOCK_METHOD` 为这个内部方法创建模拟版本，这样你可以对这两个参数设置期望行为，而忽略其他参数。测试时，可以通过参数匹配器（如 `_` 通配符）来灵活控制返回值。
+3. **简化测试**：在测试用例中只针对内部方法的调用设置断言，这样你无需为所有参数编写复杂的匹配规则，而只专注于你关心的那两个参数的值，从而让测试代码更简洁、更易维护。
+
+==当函数接口参数众多但只关心其中一部分时，提取关键参数到一个内部方法，然后对这个内部方法进行 mock，是一种非常有效的测试策略。==这样不仅能保持测试聚焦，还能避免因为其他参数的不必要的细节而增加测试复杂度
+
+> 在 Google Mock 中，当一个成员函数被多次 `EXPECT_CALL` 调用时，**匹配的顺序是根据规则的精确度来决定的**。具体来说，匹配顺序是按照以下几个原则进行的：
+>
+> 1. 精确匹配优先
+>
+>     如果定义了多个 `EXPECT_CALL` 规则，其中某一条规则的参数匹配更加精确（即参数值更具体），那么该规则将优先被应用
+>
+> 2. 顺序匹配（最先匹配的规则先执行）
+>
+>     如果多个 `EXPECT_CALL` 的规则都能够匹配当前的调用（即它们的匹配条件一样精确），那么 Google Mock 会按照规则定义的顺序来决定使用哪一条规则。
+>
+> > `WillOnce` 用于指定某个调用的**单次返回值**，它会在第一次匹配时返回设定的值，之后就不再起作用。
+> >
+> > `WillRepeatedly` 用于指定**每次匹配时都返回相同的值**，它会一直保持有效，直到所有的 `EXPECT_CALL` 都被匹配完
+>
+> > `_` 是一个通配符，它可以匹配任何传入的参数。因此，在定义 `EXPECT_CALL` 时，使用 `_` 可以匹配更多的调用。
+> >
+> > 如果你有多个规则，其中一个规则使用了 `_`，那么它会匹配任何参数的情况，但如果有一个更精确的匹配规则（如指定了具体的数值），更精确的规则会优先被执行
+
+
+
+### 十五、使用代理
+
+在gmock中使用代理，自定义mock的行为，而不仅仅是做参数校验和返回特定的值
+
+`ON_CALL` 是 Google Mock 提供的一个函数，它的作用是为一个模拟的成员函数设置**默认行为**，即当模拟函数被调用时，如果没有显式的 `EXPECT_CALL` 指定行为时，使用 `ON_CALL` 设置的行为。
+
+- **主要用途**：`ON_CALL` 不会对测试行为进行验证，只是提供一个默认行为，确保在测试过程中被调用的方法会按预期返回结果。也就是说，`ON_CALL` 主要用来设置当模拟对象的函数被调用时默认的返回值，而不涉及期望调用的次数或参数匹配。
+
+- **语法**：
+
+    ```cpp
+    ON_CALL(mock_obj, method_name)
+        .WillByDefault(some_action);
+    ```
+
+`WillByDefault` 是用来指定在没有显式设置期望（`EXPECT_CALL`）的情况下，模拟方法应该执行什么操作或返回什么值。它通常与 `ON_CALL` 一起使用。
+
+- **主要用途**：`WillByDefault` 可以定义模拟方法的默认行为，例如返回某个值、执行某段代码、或进行其他操作。它不会干涉测试用例中的期望行为，且只在没有 `EXPECT_CALL` 设置特定行为时生效。
+
+`WillByDefault` 定义了 `method_name` 方法的默认行为，`some_action` 可以是返回一个固定值、一个函数调用或其他任何合适的操作。
+
+- `ON_CALL` 和 `WillByDefault` 通常是配对使用的。`ON_CALL` 用来指定我们想要为哪些方法设置默认行为，而 `WillByDefault` 则定义了具体的行为或返回值。
+- 它们的常见用法是，在某个方法的默认行为没有被明确覆盖时，`WillByDefault` 会提供一个行为，比如返回一个值或执行某个操作。
+
+```cpp
+class Calc
+{
+public:
+    virtual int add(int a, int b) = 0;
+};
+
+class MockCalc : public Calc
+{
+public:
+    MOCK_METHOD(int, add, (int a, int b), (override));
+};
+```
+
+```cpp
+TEST(TestAdd, Case) {
+    MockCalc calc;
+    EXPECT_CALL(calc, add);
+    ON_CALL(calc, add)
+        .WillByDefault([](int a, int b) {
+            return a + b;
+        });
+    EXPECT_EQ(calc.add(1, 2), 3);
+}
+```
+
+**`EXPECT_CALL(calc, add)`**：这行代码设定了期望 `calc` 对象的 `add` 方法被调用。这个期望并没有指定参数或返回值，它的作用是监视是否调用了 `add` 方法。
+
+- `EXPECT_CALL` 通常用于设定函数被调用时应该发生的行为，或者验证方法是否按预期被调用。
+
+`ON_CALL` 是 Google Mock 提供的用于设置方法默认行为的方式。它告诉框架，当 `add` 方法被调用时，默认应该返回什么值。
+
+- `WillByDefault([](int a, int b) { return a + b; })` 通过一个 Lambda 表达式指定了 `add` 方法的默认行为：它返回 `a + b` 的和。
+- `ON_CALL` 主要用于设置默认行为，而 `EXPECT_CALL` 则用于验证特定方法的调用
+
+```bash
+Running main() from /home/will/lesson/gTest/googletest/googletest/src/gtest_main.cc
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from TestAdd
+[ RUN      ] TestAdd.Case
+[       OK ] TestAdd.Case (0 ms)
+[----------] 1 test from TestAdd (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (0 ms total)
+[  PASSED  ] 1 test.
+```
+
+> `ON_CALL`和`EXPECT_CALL`的区别
+>
+> **`EXPECT_CALL`**：
+>
+> - 用于设置期望，验证模拟方法是否按预期被调用。
+> - 可以对特定参数设置期望，验证方法是否调用特定次数。
+> - 如果期望的调用不发生，测试将失败。
+>
+> **`ON_CALL`**：
+>
+> - 用于设置默认行为，适用于不需要特定期望的情况。
+> - 不会验证调用次数，主要是定义方法的行为。
+> - `ON_CALL` 不会引起测试失败，即使该方法没有被调用。
+
+使用`ON_CALL`和`WillByDefault`的好处
+
+- **简化测试**：`ON_CALL` 和 `WillByDefault` 可以帮助你避免在测试中为每次方法调用都设置期望，尤其当你有很多方法调用时。这使得测试代码更加简洁和易于维护。
+- **设置默认行为**：如果你的模拟方法很多，且它们的默认行为都相似，使用 `ON_CALL` 配合 `WillByDefault` 可以减少重复代码。
+- **允许灵活性**：你可以对某些方法设置特定的期望（通过 `EXPECT_CALL`），对其他方法只设置默认行为，这为测试提供了更大的灵活性。
