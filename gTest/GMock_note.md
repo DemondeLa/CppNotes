@@ -1772,3 +1772,454 @@ Running main() from /home/will/lesson/gTest/googletest/googletest/src/gtest_main
 - **简化测试**：`ON_CALL` 和 `WillByDefault` 可以帮助你避免在测试中为每次方法调用都设置期望，尤其当你有很多方法调用时。这使得测试代码更加简洁和易于维护。
 - **设置默认行为**：如果你的模拟方法很多，且它们的默认行为都相似，使用 `ON_CALL` 配合 `WillByDefault` 可以减少重复代码。
 - **允许灵活性**：你可以对某些方法设置特定的期望（通过 `EXPECT_CALL`），对其他方法只设置默认行为，这为测试提供了更大的灵活性。
+
+
+
+### 十六、Matcher 匹配器
+
+匹配器，可以理解成校验参数或者是返回值的一个谓词。
+
+主要用于 `EXPECT_THAT()` 和 `ASSERT_THAT()` 断言语句，提供更灵活的匹配方式，使测试代码更加可读、可维护，并提供更详细的错误信息。尤其适用于**自定义类型**或**复杂结构**的数据验证。例如：
+
+- 允许使用更直观的方式验证**容器**、**浮点数**、**字符串**等类型的数据
+- 支持 **自定义匹配规则**
+- 提供**更详细的失败信息**，帮助调试
+
+#### **常见的 Matchers**
+
+##### **1. 数值匹配**
+
+```cpp
+EXPECT_THAT(x, Eq(y));   // x == y
+EXPECT_THAT(x, Ne(y));   // x != y
+EXPECT_THAT(x, Lt(y));   // x < y
+EXPECT_THAT(x, Le(y));   // x <= y
+EXPECT_THAT(x, Gt(y));   // x > y
+EXPECT_THAT(x, Ge(y));   // x >= y
+```
+
+##### **2. 浮点数匹配**
+
+```cpp
+EXPECT_THAT(3.14, DoubleEq(3.14));  // 精确匹配
+EXPECT_THAT(3.14, Near(3.14).epsilon(0.01));  // 允许误差范围
+```
+
+##### **3. 字符串匹配**
+
+```cpp
+EXPECT_THAT("hello world", HasSubstr("world"));  // 是否包含子字符串
+EXPECT_THAT("hello", StartsWith("he"));  // 是否以某个字符串开头
+EXPECT_THAT("hello", EndsWith("lo"));    // 是否以某个字符串结尾
+EXPECT_THAT("abc123", MatchesRegex("abc\\d+"));  // 使用正则表达式
+```
+
+##### **4. 容器匹配**
+
+```cpp
+EXPECT_THAT(std::vector<int>{1, 2, 3}, ElementsAre(1, 2, 3));  // 容器元素匹配
+EXPECT_THAT(std::vector<int>{1, 2, 3}, UnorderedElementsAre(3, 1, 2));  // 无序匹配
+```
+
+##### **5. 逻辑组合**
+
+```cpp
+EXPECT_THAT(5, AllOf(Gt(3), Lt(10)));  // 5 > 3 且 5 < 10
+EXPECT_THAT(5, AnyOf(Eq(5), Eq(10)));  // 5 == 5 或 5 == 10
+EXPECT_THAT(5, Not(Eq(10)));           // 5 不是 10
+```
+
+------
+
+#### **自定义 Matcher**
+
+如果 GTest 提供的默认 Matcher 不能满足需求，可以自定义 Matcher。
+
+##### **方式 1：使用 `MATCHER()`**
+
+```cpp
+MATCHER(IsEven, "Checks if the number is even") {
+    return (arg % 2) == 0;
+}
+
+TEST(CustomMatcher, IsEvenTest) {
+    EXPECT_THAT(4, IsEven());
+    EXPECT_THAT(7, Not(IsEven()));
+}
+```
+
+##### **方式 2：使用 `MATCHER_P()`（带参数的 Matcher）**
+
+```cpp
+MATCHER_P(IsMultipleOf, num, "") {
+    return (arg % num) == 0;
+}
+
+TEST(CustomMatcher, IsMultipleOfTest) {
+    EXPECT_THAT(10, IsMultipleOf(5));  // 10 是 5 的倍数
+    EXPECT_THAT(7, Not(IsMultipleOf(3)));  // 7 不是 3 的倍数
+}
+```
+
+#### 示例：
+
+```cpp
+class Calc
+{
+public:
+    virtual int add(int a, int b) = 0;
+};
+
+class MockCalc : public Calc
+{
+public:
+    MOCK_METHOD(int, add, (int a, int b), (override));
+};
+```
+
+`MockCalc` 类继承 `Calc`，使用 `MOCK_METHOD` 宏**模拟 `add` 方法**。
+
+这个 Mock 类可以**用于单元测试，而不需要真正的 `Calc` 实现**，通过 **EXPECT_CALL** 控制 `add()` 返回不同的值。
+
+```cpp
+using testing::_; // _ 代表 任意参数
+using testing::AllOf;
+using testing::Gt;
+using testing::Lt;
+using testing::Matches;
+using testing::Return;
+using testing::Truly;
+
+TEST(TestAdd, Case1)
+{
+    MockCalc calc;
+    EXPECT_CALL(calc, add(_, _))
+        .WillRepeatedly(Return(100));
+    EXPECT_CALL(calc, add(AllOf(Gt(3), Lt(6)), _))
+        .WillRepeatedly(Return(10));
+
+    EXPECT_EQ(calc.add(5, 6), 10);
+    EXPECT_EQ(calc.add(0, 6), 100);
+}
+```
+
+在`calc, add(_, _)`中，默认情况下， 所有`add(a, b)`调用都会返回100
+
+但是在下面又定义了特殊条件，通过`AllOf`和`Gt`, `Lt`这3个匹配器，限定了`add`的第一个参数的范围
+
+> `AllOf` 是 **Google Mock（gMock）** 提供的一个**逻辑匹配器**，用于组合多个匹配条件，要求所有条件<u>都满足</u>时才匹配成功。
+>
+> ```cpp
+> AllOf(Matcher1, Matcher2, ...)
+> ```
+>
+> `AllOf` 接受多个匹配器作为参数（至少两个）。只有所有匹配器都匹配成功时，`AllOf` 才匹配成功；如果所有匹配条件都满足，则匹配成功，否则匹配失败
+
+==注意==：这两个`EXPECT_CALL`不能调换顺序：
+
+因为Google Mock 处理匹配规则的方式采用 **最先匹配（First Match Wins）** 原则，即**匹配到第一个符合条件的规则后，后续规则将不会生效**。
+
+==`EXPECT_CALL` **按“后写的先注册”**（后声明的 `EXPECT_CALL` **优先匹配**）的顺序进行匹配。**第一个匹配成功的 `EXPECT_CALL` 会生效**，后续的 `EXPECT_CALL` 不再检查==
+
+即，如果你写了多个 `EXPECT_CALL` 语句，**最后写的 `EXPECT_CALL` 会先进行匹配检查**。这样可以让更具体的匹配规则（更严格的匹配条件）覆盖住更宽泛的匹配规则（通配 `_` 的匹配）。
+
+因此如果上面的2条规则调换顺序，在调用`add`时，永远只会去匹配两个参数都是通配符`_`的那个，根本不会都到最先定义的那条规则。
+
+```cpp
+TEST(TestAdd, Case2)
+{
+    MockCalc calc;
+    EXPECT_CALL(calc, add(_, _))
+        .WillRepeatedly(Return(100));
+    EXPECT_CALL(calc, add(Truly([](int a) {
+            return a > 3 && a < 6; 
+            }), _))
+        .WillRepeatedly(Return(10));
+
+    EXPECT_EQ(calc.add(5, 6), 10);
+    EXPECT_EQ(calc.add(0, 6), 100);
+}
+```
+
+这种写法在逻辑上和之前的`Case1`是一样的
+
+`Truly` 是 **Google Mock（gMock）** 提供的一个 **自定义匹配器（custom matcher）**，它允许你使用**任意的 Lambda 表达式或普通函数**作为匹配规则
+
+`Truly(predicate)`：
+
+- `predicate` 是 **一个可调用对象（Lambda、函数指针或仿函数）**，它接受**一个参数**并返回 `bool`
+- 只有当 `predicate(x) == true` 时，匹配才成功
+- 适用于**无法用标准匹配器（如 `Gt`、`Lt`、`Eq` 等）表达的复杂匹配规则**
+
+```cpp
+#include <vector>
+#include <algorithm>
+
+TEST(TestMatcher, Case) 
+{
+    std::vector<int> data {1, 2, 3, 4, 5, 6};
+    auto t = std::find_if(data.begin(), data.end(), Matches(Gt(4)));
+    EXPECT_EQ(*t, 5);
+}
+```
+
+在 **Google Mock（gMock）** 中，`Matches` **用于将一个匹配器（Matcher）包装成一个谓词（Predicate）**，以便它可以在 `std::find_if` 这样的标准算法或其他需要 **`bool` 作为返回值** 的地方使用。
+
+或者说它可以将一个匹配器转变为一个可调用的函数对象，并且这个函数对象返回的是bool类型的值
+
+```bash
+Running main() from /home/will/lesson/gTest/googletest/googletest/src/gtest_main.cc
+[==========] Running 3 tests from 2 test suites.
+[----------] Global test environment set-up.
+[----------] 2 tests from TestAdd
+[ RUN      ] TestAdd.Case1
+[       OK ] TestAdd.Case1 (0 ms)
+[ RUN      ] TestAdd.Case2
+[       OK ] TestAdd.Case2 (0 ms)
+[----------] 2 tests from TestAdd (0 ms total)
+
+[----------] 1 test from TestMatcher
+[ RUN      ] TestMatcher.Case
+[       OK ] TestMatcher.Case (0 ms)
+[----------] 1 test from TestMatcher (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 3 tests from 2 test suites ran. (0 ms total)
+[  PASSED  ] 3 tests.
+```
+
+##### **`Truly` 和 `Matches` 的比较**
+
+1. **`Truly`**
+
+    - `Truly` 用于将 **任何返回 `bool` 的函数**（比如 Lambda 或普通函数）转换为谓词。
+    - 适用于 **自定义匹配逻辑**，例如，无法用简单的 gMock 匹配器（如 `Gt`, `Lt` 等）表示的复杂规则。
+
+    **示例：**
+
+    ```cpp
+    Truly([](int x) { return x > 10 && x < 20; })
+    ```
+    
+    这个 `Truly` 会将 `[](int x) { return x > 10 && x < 20; }` 转换成一个谓词，该谓词可以用于如 `std::find_if` 之类的函数中。
+    
+2. **`Matches`**
+
+    - `Matches` 用于将 **gMock 匹配器**（如 `Eq(x)`, `Gt(y)`, `AllOf(...)`）转换为谓词。
+    - 它 **只能**接收 **gMock 匹配器**，并将它们转换成谓词，以便用于标准算法或其他需要 `bool` 返回值的地方。
+
+    **示例：**
+
+    ```cpp
+    Matches(Gt(4))
+    ```
+    
+    `Matches(Gt(4))` 会将 `Gt(4)` 转换为一个谓词，该谓词会在 **`x > 4`** 时返回 `true`。
+
+从匹配器到谓词用 `Truly` 进行转换，从匹配器到谓词用 `Matches` 进行转换，可以这么说。更准确的说法是：
+
+- **`Truly`** 用于将 **自定义的逻辑（函数或 Lambda）** 转换为谓词。
+- **`Matches`** 用于将 **gMock 匹配器** 转换为谓词。
+
+这两者都可以将匹配器转换为谓词，但 **适用场景和用途有所不同**
+
+
+
+### 十七、限制参数间的关系
+
+**.With()** 是 Google Mock 中 EXPECT_CALL 调用链的一部分，用于为模拟方法调用添加**额外的参数约束**。
+
+当在 EXPECT_CALL 中定义了要拦截的函数调用（通过参数匹配器如 `_`、`Gt(5)` 等），`.With()` 允许进一步**检查传入的参数**是否满足某些特定的条件；即除了 EXPECT_CALL 中对方法和参数的初步匹配外，.With() 为匹配过程添加了额外的“过滤器”或“验证器”。
+
+作用：
+
+- **附加验证**：有时你可能需要对调用时传入的参数进行更精细的验证，比如验证多个参数之间的关系、某个参数是否满足某种复杂条件等。.With() 就能做到这点。
+
+- **扩展匹配能力**：当简单的匹配器（如 `Eq()`, `Gt()` 等）不足以表达你的意图时，借助 .With() 可以利用更灵活的组合器（如 `AllArgs`, `Args`, `Truly` 等）来组合多个条件进行判断。
+
+- **提高测试准确性**：通过 .With()，你可以确保只有在参数满足所有额外条件时，模拟调用才算作匹配成功，从而使测试更严格、更准确。
+
+语法：
+
+```cpp
+EXPECT_CALL(mockObject, method(<参数匹配器>))
+    .With(<额外的匹配器>);
+// 参数匹配器：在 EXPECT_CALL 中，通常会用类似 _、Eq()、Gt() 等匹配器来初步筛选函数调用。
+// 额外的匹配器：在 .With() 中，你可以传入一个 matcher，这个 matcher 将会对传入的参数（或参数元组）进行额外检查。
+```
+
+例如：
+
+1. 如果你的方法有多个参数，直接传入一个 matcher（如 `Lt(10)`）时，Google Mock 默认将其应用于**第一个参数**：
+
+    ```cpp
+    EXPECT_CALL(mockObj, method(_, _))
+        .With(Lt(10));  // 默认作用于第一个参数
+    // 这表示只有当第一个参数满足 x < 10 时，调用才匹配。
+    ```
+
+2. 当你想对整个参数列表（即一个参数元组）进行检查时，可以使用 **AllArgs()**：
+
+    ```cpp
+    EXPECT_CALL(mockObj, method(_, _))
+        .With(AllArgs(Lt(10)));
+    // 这里，AllArgs(Lt(10)) 会将传入的参数元组的每个元素都交给 Lt(10) 进行检查（通常要求所有参数都满足某个条件）。
+    ```
+
+3. 如果你只关心某几个参数之间的关系，可以利用 **Args<...>(matcher)** 来提取参数：
+
+    ```cpp
+    EXPECT_CALL(mockObj, method(_, _))
+        .With(Args<0,1>(Lt()));  // 将第 0 个和第 1 个参数传给 Lt() 进行比较
+    // 如果 Lt() 用于比较两个值，这个表达式可以要求“第 0 个参数小于第 1 个参数”。
+    ```
+
+4. 你还可以将多个匹配条件组合起来，要求全部满足：
+
+    ```cpp
+    EXPECT_CALL(mockObj, method(_, _, _))
+        .With(AllOf(Args<0, 1>(Lt()), Args<1, 2>(Gt())));
+    // Args<0, 1>(Lt()) 要求第 0 个参数小于第 1 个参数；
+    // Args<1, 2>(Gt()) 要求第 1 个参数大于第 2 个参数；
+    // AllOf() 则要求这两个条件都满足。
+    ```
+
+5. 当标准匹配器无法表达你复杂的逻辑时，可以用 **Truly()** 搭配 Lambda 表达式：
+
+    ```cpp
+    EXPECT_CALL(mockObj, method(_, _, _))
+        .With(AllArgs(Truly([](std::tuple<int, int, int> args) {
+             return std::get<0>(args) < std::get<1>(args) &&
+                    std::get<1>(args) < std::get<2>(args);
+        })));
+    // 将三个参数打包为一个 tuple，并传递给 Lambda，Lambda 内部自定义了验证逻辑，比如检查参数是否严格递增。
+    ```
+
+具体示例：
+
+```cpp
+class Calc
+{
+public:
+    virtual int calc(int a, int b, int c) = 0;
+    virtual int calc(int a, int b) = 0;
+};
+
+class MockCalc : public Calc
+{
+public:
+    MOCK_METHOD(int, calc, (int a, int b, int c), (override));
+    MOCK_METHOD(int, calc, (int a, int b), (override));
+};
+```
+
+定义了一个`Calc`类，有2个重载的函数，分别接受不同个数的参数。然后用Mock继承了这个虚拟类，并用`MOCK_METHOD`实现了原函数
+
+```cpp
+using testing::_;
+using testing::Lt;
+TEST(TestCalc, Case1)
+{
+    MockCalc calc;
+    EXPECT_CALL(calc, calc(_, _))
+        .With(Lt());
+
+    calc.calc(3, 4);
+}
+```
+
+这个测试用例，给`calc`传入2个参数，希望它能够满足`less then`的条件
+
+这里传入的 matcher 是 `Lt()`。由于没有用 **AllArgs** 或 **Args**，gMock 会默认将这个 matcher 应用于**第一个参数**。也就是说，本例要求调用时，第一个参数必须满足 `Lt()`（即“小于某个值”）。
+（注意：一般来说，`Lt()` 需要一个参数，比如 `Lt(10)` 表示“少于 10”，这里省略参数可能只是示例代码的简化写法。）
+
+当传入 `.With(Lt())` 时，Google Mock 能够将这个 matcher 隐式转换或适配为一个用于比较两个参数的 matcher（实际上等价于显式写作`.With(Args<0,1>(Lt()))`），这就要求第 0 个参数（即第一个参数）必须小于第 1 个参数（第二个参数）
+
+> 如果这里是3个参数，`EXPECT_CALL(calc, calc(_, _, _))`，也省略`Lt`的参数的话`.With(Lt())`，在语法上就是错误的
+
+```cpp
+using testing::AllArgs;
+TEST(TestCalc, Case2)
+{
+    MockCalc calc;
+    EXPECT_CALL(calc, calc(_, _))
+        .With(AllArgs(Lt()));
+
+    calc.calc(3, 4);
+}
+```
+
+使用了 `AllArgs`，这会将传入的 matcher（`Lt()`）转换为一个对**整个参数元组**起作用的 matcher。也就是说，对于传入的两个参数 (3, 4)，要求“每个参数”都要满足 `Lt()` 的条件。
+
+—— 如果你想让所有传入的参数都符合某个条件，就可以这么写。
+
+```cpp
+using testing::AllOf;
+using testing::Args;
+using testing::Gt;
+TEST(TestCalc, Case3)
+{
+    MockCalc calc;
+    EXPECT_CALL(calc, calc(_, _, _))
+        .With(AllOf(Args<0, 1>(Lt()), Args<1, 2>(Gt())));
+
+    calc.calc(3, 4, 2);
+}
+```
+
+`.With(AllOf(Args<0, 1>(Lt()), Args<1, 2>(Gt())))`
+这个 With 子句结合了多个 matcher：
+
+- **Args<0, 1>(Lt())**
+    这个 matcher从参数元组中选取第 0 个和第 1 个参数，并用 `Lt()` 进行比较，要求“第 0 个参数小于第 1 个参数”。
+- **Args<1, 2>(Gt())**
+    这个 matcher选取第 1 个和第 2 个参数，用 `Gt()` 检查“第 1 个参数大于第 2 个参数”。
+- **AllOf(...)**
+    将上述两个条件组合起来，要求两者都满足。
+
+```cpp
+#include <tuple>
+using testing::Truly;
+TEST(TestCalc, Case4)
+{
+    MockCalc calc;
+    EXPECT_CALL(calc, calc(_, _, _))
+        .With(AllArgs(Truly([](std::tuple<int, int, int> args) {
+            return std::get<0>(args) <std::get<1>(args)
+                && std::get<1>(args) < std::get<2>(args);
+            })));
+
+    calc.calc(4, 5, 6);
+}
+```
+
+**AllArgs(Truly(lambda))**
+
+- **Truly(lambda)**：接受一个 Lambda，这个 Lambda 的参数是一个 `std::tuple<int, int, int>`（即调用时的所有参数），返回一个 bool 值。
+    在这里，lambda 对传入的参数进行解包，检查是否满足“第一个参数 < 第二个参数 且 第二个参数 < 第三个参数”的严格递增关系。
+- **AllArgs**：把这个针对单个对象（这里是整个 tuple）的 matcher 应用到整个参数列表。
+
+> `std::get<>()` 是 C++ 中 **tuple** 类模板提供的一个函数，用来从元组（`std::tuple`）中提取特定位置的元素。它的作用是访问和操作 `std::tuple` 类型的数据结构中的元素。
+>
+> `std::get<index>()` 允许通过指定索引（`index`）来访问元组中的第 `index` 个元素。索引是**编译时确定的**，并且必须是整数类型（如 `0`、`1`、`2` 等）
+
+```bash
+Running main() from /home/will/lesson/gTest/googletest/googletest/src/gtest_main.cc
+[==========] Running 4 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 4 tests from TestCalc
+[ RUN      ] TestCalc.Case1
+[       OK ] TestCalc.Case1 (0 ms)
+[ RUN      ] TestCalc.Case2
+[       OK ] TestCalc.Case2 (0 ms)
+[ RUN      ] TestCalc.Case3
+[       OK ] TestCalc.Case3 (0 ms)
+[ RUN      ] TestCalc.Case4
+[       OK ] TestCalc.Case4 (0 ms)
+[----------] 4 tests from TestCalc (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 4 tests from 1 test suite ran. (0 ms total)
+[  PASSED  ] 4 tests.
+```
+
