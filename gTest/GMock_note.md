@@ -2223,3 +2223,220 @@ Running main() from /home/will/lesson/gTest/googletest/googletest/src/gtest_main
 [  PASSED  ] 4 tests.
 ```
 
+
+
+### 十八、限制结构体的成员
+
+```cpp
+struct Complex 
+{
+    double r;
+    double i;
+    std::string toString() const {
+        if (r == 0) {
+            if (i == 0)
+                return "0";
+            else 
+                return std::to_string(i) + "i";
+        } else {
+            if (i == 0)
+                return std::to_string(r);
+            else 
+                return std::to_string(r) + "+" + std::to_string(i) + "i";
+        }
+    }
+};
+
+class Calc
+{
+public:
+    virtual Complex calc(Complex a, Complex b) = 0;
+};
+
+class MockCalc : public Calc
+{
+public:
+    MOCK_METHOD(Complex, calc, (Complex a, Complex b), (override));
+};
+
+void PrintTo(const Complex &c, std::ostream *out) {
+    *out << c.toString();
+}
+```
+
+`Field` 是 Google Mock 中的一种匹配器，用来验证对象的某个字段（成员变量）是否符合指定的条件。它允许你在设置期望值时对对象的特定字段进行匹配，而不需要直接对整个对象进行匹配。
+
+```cpp
+Field(&Class::member, matcher)
+    // &Class::member：指定要匹配的成员字段（可以是类的成员变量）
+    // matcher：指定对该成员字段应用的匹配条件。可以是任何 Google Mock 支持的匹配器，比如 Eq(), Gt(), Lt() 等。
+```
+
+`Field` 匹配器用于对对象的某个成员字段进行匹配检查。它并不关心其他字段的值，只会检查特定字段是否满足给定条件。
+
+```cpp
+using testing::_;
+using testing::Field;
+using testing::Gt;
+TEST(TestCalc, Case1)
+{
+    MockCalc calc;
+    EXPECT_CALL(calc, calc(Field("parameter1.real part", &Complex::r, Gt(0)), _));
+
+    calc.calc (Complex{0, 2}, Complex{1, 2});
+}
+```
+
+这里使用 `Field` 匹配器来验证 `Complex` 对象的实部 `r` 是否大于 0：
+
+- `Field("parameter1.real part", &Complex::r, Gt(0))` 表示：**期望传入 `calc` 方法的第一个参数是 `Complex` 类型，并且其实部 `r` 大于 0**。
+
+    其中，这里第一个参数是对成员变量的描述，可以是任何值，为了便于在错误输出时，打印更可视化；这里之所以要传入一个描述性的信息，是因为C++默认不支持反射，因此即使后面有`Complex::r`，也获取不到它的名称，因此在报错的时候不知道这部分叫什么，因此需要提供一个字符串
+
+    第二个参数是要限制的成员变量的地址
+
+    第三个参数就是限制的方法
+
+- 第二个参数使用 `_`，表示不关心第二个 `Complex` 参数
+
+这个测试用例会失败，应为期望的第一个参数的`r`是大于`0`的，但是实际调用的时候，传入的参数是`0`，因此会断言失败
+
+> `Field` 允许在期望值中只验证对象的某些字段，而不是验证整个对象。这对于复杂的对象非常有用，尤其是当你只关心部分字段的值时。
+>
+> `Field` 主要用于 **对象字段的单独验证**，而不需要关心对象其他字段的值。通过这种方式，你可以更细粒度地控制期望条件。
+>
+> **优势**：
+>
+> - **灵活性**：可以单独检查对象的某个字段，而不需要关心对象的其他部分
+> - **简洁性**：对于复杂的对象或结构体，避免了对整个对象进行复杂的匹配，只关心我们需要验证的字段
+> - **可读性**：可以显式地指出期望匹配的字段，增加测试的可读性。
+
+`Property` 是 Google Mock 中的一个匹配器，用来验证对象的某个成员函数的返回值是否符合指定的条件。不同于 `Field` 匹配器通过访问对象的成员变量来进行匹配，`Property` 匹配器是通过调用对象的成员函数来获取属性值，并根据指定的匹配条件对其进行验证。
+
+```cpp
+Property(&Class::member_function, matcher)
+	// &Class::member_function：指定要调用的成员函数。这个成员函数通常是一个 getter 或其他返回值的方法
+    // matcher：指定对该函数返回值应用的匹配器，类似于 Eq(), Gt(), StartsWith() 等
+```
+
+`Property` 匹配器用于匹配对象的某个成员函数的返回值，而不是直接对对象的字段进行匹配。这非常适用于对象需要通过成员函数访问其数据，而不是直接通过成员变量访问的情况。
+
+```cpp
+using testing::Property;
+using testing::StartsWith;
+TEST(TestCalc, Case2) 
+{
+    MockCalc calc;
+    EXPECT_CALL(calc, calc(
+        Property("toString", &Complex::toString, StartsWith("3")), _));
+    calc.calc(Complex {3, 2}, Complex {1, 2});
+}
+```
+
+使用 `Property` 匹配器来验证 `toString()` 的返回值：
+
+- `Property("toString", &Complex::toString, StartsWith("3"))` 表示：**期望传入 `calc` 方法的第一个 `Complex` 参数，其 `toString()` 方法返回的字符串以 "3" 开头**。
+- 第二个参数用 `_`，表示不关心第二个参数。
+
+> `Property` 匹配器不仅验证对象的某个成员变量，还验证通过成员函数获取的值。这样，它可以让你针对对象的行为进行更细粒度的测试。
+>
+> `Property` 匹配器通常用于测试对象的状态，而不是直接对字段的值进行验证，尤其是当对象的状态是通过成员函数暴露的，而非直接暴露成员变量时
+
+而如果不使用`Property`匹配器，则又要麻烦得多：
+
+```cpp
+Complex Complex::Add(const Complex& a) const {
+	return Complex {r + a.r, i + a.i};
+}
+using testing::Truly;
+TEST(TestCalc, Case4) 
+{
+    MockCalc calc;
+    EXPECT_CALL(calc, calc(
+        Truly([](const Complex& a) {
+            Complex b {1, 2};  
+            auto ret = a.Add(b);
+            return ret.r == 4 && ret.i == 6;
+        }), _));
+    calc.calc(Complex {3, 4}, Complex {1, 2});
+}
+```
+
+另外，说明一个写这个测试用例的时候碰到的问题
+
+- `Truly` 匹配器传递给 `lambda` 的参数是 **常量引用**（`const Complex&`），这意味着 `lambda` 只能接受单个参数。因此`Add() const`，
+
+- `Truly` 匹配器传递的 **仅仅是一个参数**，而不是两个参数。你原本的 `lambda` 函数期望接受 **两个参数**（`const Complex& a` 和 `const Complex& b`），这导致了参数数量不匹配的错误。
+
+    ```cpp
+    Complex b{1, 2};  // 可以在这里定义另一个 Complex 对象，模拟加法
+    ```
+
+    手动创建另一个 `Complex` 对象
+
+| 匹配器       | `Field`                                | `Property`                                                 |
+| ------------ | -------------------------------------- | ---------------------------------------------------------- |
+| **关注对象** | 对象的成员变量（通常是字段）           | 对象的成员函数的返回值（通常是 getter 或其他返回值的方法） |
+| **语法**     | `Field(&Class::member, matcher)`       | `Property(&Class::member_function, matcher)`               |
+| **适用场景** | 适用于直接访问对象的成员变量来进行验证 | 适用于访问对象的方法返回值来进行验证                       |
+| 验证方式     | 匹配成员变量的值（直接访问字段）       | 匹配成员函数的返回值（调用函数）                           |
+| 示例         | Field("r", &Complex::r, Gt(0))         | Property("toString", &Complex::toString, StartsWith("3"))  |
+
+如果有多个限制条件：
+
+```cpp
+using testing::AllOf;
+TEST(TestCalc, Case3) 
+{
+    MockCalc calc;
+    EXPECT_CALL(calc, calc(AllOf(
+        Field("r", &Complex::r, Gt(0)),
+        Field("i", &Complex::i, Gt(10))), _));
+    calc.calc(Complex {1, 11}, Complex {1, 11});
+}
+```
+
+```bash
+Running main() from /home/will/lesson/gTest/googletest/googletest/src/gtest_main.cc
+[==========] Running 4 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 4 tests from TestCalc
+[ RUN      ] TestCalc.Case1
+unknown file: Failure
+
+Unexpected mock function call - returning default value.
+    Function call: calc(2.000000i, 1.000000+2.000000i)
+          Returns: 0
+Google Mock tried the following 1 expectation, but it didn't match:
+
+/home/will/lesson/gTest/37.member/member.cpp:53: EXPECT_CALL(calc, calc(Field("parameter1.real part", &Complex::r, Gt(0)), _))...
+  Expected arg #0: is an object whose field `parameter1.real part` is > 0
+           Actual: 2.000000i, whose field `parameter1.real part` is 0 (of type double)
+         Expected: to be called once
+           Actual: never called - unsatisfied and active
+
+/home/will/lesson/gTest/37.member/member.cpp:53: Failure
+Actual function call count doesn't match EXPECT_CALL(calc, calc(Field("parameter1.real part", &Complex::r, Gt(0)), _))...
+         Expected: to be called once
+           Actual: never called - unsatisfied and active
+
+[  FAILED  ] TestCalc.Case1 (0 ms)
+[ RUN      ] TestCalc.Case2
+[       OK ] TestCalc.Case2 (0 ms)
+[ RUN      ] TestCalc.Case4
+[       OK ] TestCalc.Case4 (0 ms)
+[ RUN      ] TestCalc.Case3
+[       OK ] TestCalc.Case3 (0 ms)
+[----------] 4 tests from TestCalc (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 4 tests from 1 test suite ran. (0 ms total)
+[  PASSED  ] 3 tests.
+[  FAILED  ] 1 test, listed below:
+[  FAILED  ] TestCalc.Case1
+
+ 1 FAILED TEST
+```
+
+
+
