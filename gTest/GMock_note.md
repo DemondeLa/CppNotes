@@ -2440,3 +2440,459 @@ Actual function call count doesn't match EXPECT_CALL(calc, calc(Field("parameter
 
 
 
+### 十九、限制指针类型的参数
+
+
+
+```cpp
+class Calc
+{
+public:
+    virtual int calc(int *pa, int *pb) = 0;
+};
+
+class MockCalc : public Calc
+{
+public:
+    MOCK_METHOD(int, calc, (int *pa, int *pb), (override));
+};
+```
+
+
+
+`Pointee` 是 Google Mock 中的一个匹配器，用来检查指针类型的参数所指向的值是否满足某些条件。它通常与其他匹配器（如 `Gt`、`Lt` 等）配合使用，来验证指针指向的内容是否符合预期。
+
+```cpp
+Pointee(matcher)
+    // matcher：这个参数是另一个匹配器，通常是用来验证指针指向的对象的值是否符合某些条件。常用的匹配器包括：
+    /*
+    * Gt(value)：指针指向的值是否大于某个值。
+    * Lt(value)：指针指向的值是否小于某个值。
+	* Eq(value)：指针指向的值是否等于某个值。
+	* Ne(value)：指针指向的值是否不等于某个值。
+    */
+```
+
+`Pointee` 的作用是从一个指针变量中解引用，并对指向的内容应用断言。换句话说，它用来检查指针指向的对象的值，而不是检查指针本身。
+
+`Pointee` 会解引用传入的指针，并检查指向的值是否满足提供的匹配条件。如果指针为空或指向的值不满足条件，匹配器会失败，测试会报告错误。
+
+```cpp
+using testing::Pointee;
+using testing::Gt;
+using testing::Lt;
+TEST(TestCalc, Case1)
+{
+    MockCalc mc;
+    EXPECT_CALL(mc, calc(Pointee(Gt(3)), Pointee(Lt(6))));
+
+    int a = 10, b = 5;
+    mc.calc(&a, &b);
+    // mc.calc(nullptr, &b);
+}
+```
+
+在这里，`Pointee` 与 `Gt` 和 `Lt` 配合使用，来验证指针指向的值是否符合预期条件：
+
+- 第一个参数 `pa` 是一个指针，`Pointee(Gt(3))` 意味着期望指针 `pa` 指向的值大于 3。比如，如果 `pa` 指向的值是 10，那么这个匹配器会验证该值是否大于 3。
+- 第二个参数 `pb` 是另一个指针，`Pointee(Lt(6))` 意味着期望指针 `pb` 指向的值小于 6。如果 `pb` 指向的值是 5，那么这个匹配器会验证该值是否小于 6。
+
+```cpp
+using testing::Truly;
+TEST(TestCalc, Case2)
+{
+    MockCalc mc;
+    EXPECT_CALL(mc, calc(Truly([](int *p) {
+            return *p > 3;
+        }), Truly([](int *p){
+            return *p < 6;
+        })));
+
+    int a = 10, b = 5;
+    mc.calc(&a, &b);
+    // mc.calc(nullptr, &b);
+}
+```
+
+```bash
+Running main() from /home/will/lesson/gTest/googletest/googletest/src/gtest_main.cc
+[==========] Running 2 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 2 tests from TestCalc
+[ RUN      ] TestCalc.Case1
+[       OK ] TestCalc.Case1 (0 ms)
+[ RUN      ] TestCalc.Case2
+[       OK ] TestCalc.Case2 (0 ms)
+[----------] 2 tests from TestCalc (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 2 tests from 1 test suite ran. (0 ms total)
+[  PASSED  ] 2 tests.
+```
+
+对于这两个测试用例，从逻辑上，似乎实现的是同样的功能，但是，如果调用时传入的是空指针则会出现不同的结果：
+
+```bash
+# 当Case1中，调用为：mc.calc(nullptr, &b);
+[ RUN      ] TestCalc.Case1
+unknown file: Failure
+
+Unexpected mock function call - returning default value.
+    Function call: calc(NULL, 0x7ffc18644ba0)
+          Returns: 0
+Google Mock tried the following 1 expectation, but it didn't match:
+
+/home/will/lesson/gTest/38.pointer/pointer.cpp:24: EXPECT_CALL(mc, calc(Pointee(Gt(3)), Pointee(Lt(6))))...
+  Expected arg #0: points to a value that is > 3
+           Actual: NULL
+         Expected: to be called once
+           Actual: never called - unsatisfied and active
+
+/home/will/lesson/gTest/38.pointer/pointer.cpp:24: Failure
+Actual function call count doesn't match EXPECT_CALL(mc, calc(Pointee(Gt(3)), Pointee(Lt(6))))...
+         Expected: to be called once
+           Actual: never called - unsatisfied and active
+
+[  FAILED  ] TestCalc.Case1 (0 ms)
+```
+
+```bash
+# 当Case2中，调用为：mc.calc(nullptr, &b);
+[ RUN      ] TestCalc.Case2
+段错误 (核心已转储)
+```
+
+这是因为在Case2的设置预期结果时，没有对传入的指针做任何的判断，就进行了解引用，从而引发了段错误
+
+```cpp
+EXPECT_CALL(mc, calc(Truly([](int *p) {
+            return p != nullptr && *p > 3;
+        }), Truly([](int *p){
+            return p != nullptr && *p < 6;
+        })));
+```
+
+这样修改后，两个用例才算等价
+
+
+
+### 二十、编写自定义的matcher
+
+之前也有写过自定义的matcher，主要是通过`Truly`来实现的，将一些可调用对象，比如说lambda转换成成matcher来使用。但是这样做还是存在一些缺陷的，例如：当没有匹配上时，显示的错误信息不是很直观
+
+本节的目的就是定义一个打印信息友好、实现谓词效果的matcher。主要有2种方式
+
+#### 通过类继承自定义匹配器
+
+自定义匹配器可以通过继承 `testing::Matcher` 类来实现。具体步骤如下：
+
+1. **继承 `Matcher` 类** 创建一个类继承 `testing::Matcher` 类并实现匹配逻辑。通常需要实现以下几个方法：
+    - `MatchAndExplain`: 实现匹配的具体逻辑，返回是否匹配成功。
+    - `DescribeTo`: 描述匹配成功时的输出信息。
+    - `DescribeNegationTo`: 描述匹配失败时的输出信息。
+
+```cpp
+class DivMatcher
+{
+public:
+    using is_gtest_matcher = void; // 定义了一个类型别名，用于告诉 Google Test 这是一个匹配器类。is_gtest_matcher这是一个内置的嵌套类型，后面可以对于任意类型，必须要有，不然下面::testing::Matcher<int> Div会报错
+
+    explicit DivMatcher(int n)
+        : _data(n)
+    {}
+    bool MatchAndExplain(int param, std::ostream *) const {
+        return param % _data == 0;
+    }
+    void DescribeTo(std::ostream *os) const {
+        // MatchAndExplain ==> true 对应没有匹配时的打印输出
+        *os << "Can‘t be divided by " << _data << std::endl;
+    }
+    void DescribeNegationTo(std::ostream *os) const {
+        *os << "Can be divided by " << _data << std::endl;
+    }
+private:
+    int _data;
+};
+```
+
+2. **定义一个转换函数（如 `Div`）**
+    创建一个转换函数，将自定义匹配器封装成 `Matcher` 对象，方便在 `EXPECT_CALL` 等语句中使用。
+
+```cpp
+using testing::Matcher;
+::testing::Matcher<int> Div(int n) {
+    return DivMatcher(n); // 将类转换为matcher
+}
+```
+
+`DivMatcher` 是一个自定义的 gtest 匹配器，检查一个数值是否可以被指定的整数整除。
+
+`Div`这是一个包装函数，将 `DivMatcher` 转换为 Google Test 匹配器类型 `Matcher<int>`。可以通过 `Div` 函数创建 `DivMatcher` 实例
+
+```cpp
+class Calc
+{
+public:
+    virtual int calc(int a, int b) = 0;
+};
+
+class MockCalc : public Calc
+{
+public:
+    MOCK_METHOD(int, calc, (int a, int b), (override));
+};
+
+TEST(TestCalc, Case1)
+{
+    MockCalc mc;
+    EXPECT_CALL(mc, calc(Div(3), Div(5)));
+
+    // mc.calc(6, 10);
+    mc.calc(7, 10);
+}
+```
+
+`EXPECT_CALL(mc, calc(Div(3), Div(5)));` 这行代码设置了期望，当 `calc` 方法被调用时，两个参数应分别满足被 3 整除和被 5 整除的条件。
+
+以上是第一种方式，这种方式首先定义了一个类，在里面实现正常匹配和匹配失败的输出，另外还需要实现谓词逻辑和构造函数。之后还有定义一个辅助函数来将对象转为matcher
+
+```bash
+[ RUN      ] TestCalc.Case1
+unknown file: Failure
+
+Unexpected mock function call - returning default value.
+    Function call: calc(7, 10)
+          Returns: 0
+Google Mock tried the following 1 expectation, but it didn't match:
+
+/home/will/lesson/gTest/39.define_matcher/define_matcher.cpp:53: EXPECT_CALL(mc, calc(Div(3), Div(5)))...
+  Expected arg #0: Can't be divided by 3
+
+           Actual: 7
+         Expected: to be called once
+           Actual: never called - unsatisfied and active
+
+/home/will/lesson/gTest/39.define_matcher/define_matcher.cpp:53: Failure
+Actual function call count doesn't match EXPECT_CALL(mc, calc(Div(3), Div(5)))...
+         Expected: to be called once
+           Actual: never called - unsatisfied and active
+
+[  FAILED  ] TestCalc.Case1 (0 ms)
+```
+
+#### 通过宏定义自定义匹配器
+
+Google Test 还提供了 `MATCHER` 和 `MATCHER_P` 宏，用于快速定义一个匹配器。
+
+- **`MATCHER` 宏**：定义一个无参数的匹配器，检查传入的参数是否满足条件。
+- **`MATCHER_P` 宏**：定义一个带参数的匹配器，匹配逻辑可以基于参数执行。
+
+**实现步骤**：
+
+###### 步骤 1: **选择匹配器类型**
+
+- **无参数匹配器**：使用 `MATCHER` 宏，例如 `Div2`。
+- **带参数匹配器**：使用 `MATCHER_P` 宏，例如 `DivN`。
+- **继承 `Matcher` 类**：如果需要更复杂的匹配逻辑，使用类继承的方式，如 `DivMatcher`。
+
+###### 步骤 2: **实现匹配逻辑**
+
+- **`MatchAndExplain`**: 定义判断传入参数是否满足条件的逻辑。
+- **`DescribeTo`**: 定义成功匹配时的描述信息。
+- **`DescribeNegationTo`**: 定义失败匹配时的描述信息。
+
+```cpp
+// 无参数的匹配器
+MATCHER(Div2, (negation ? "is" : "is not") + std::string (" divisible by 2"))
+{
+    return (arg % 2) == 0;
+}
+/* negation为`true`的时候表示匹配上；`false`表示没有匹配上了
+ 	// 上面case1的MatchAndExplain是相反的逻辑
+* arg也是内置的变量，用于接收外面传入的参数
+*/
+// 带参数的匹配器
+MATCHER_P(DivN, n, (negation ? "is" : "is not") + 
+          std::string (" divisible by ") + std::to_string(n))
+{
+    return (arg % n) == 0;
+}
+```
+
+###### 步骤 3: **使用自定义匹配器**
+
+在 Google Mock 的 `EXPECT_CALL` 中使用自定义匹配器进行验证。可以将匹配器作为参数传入，例如：
+
+```cpp
+EXPECT_CALL(mc, calc(Div(3), Div(5)));
+```
+
+或者，直接在 `EXPECT_CALL` 中使用宏定义的匹配器：
+
+```cpp
+EXPECT_CALL(mc, calc(Div2(), Div2()));
+```
+
+例1：
+
+```cpp
+MATCHER(Div2, (negation ? "is" : "is not") + std::string (" divisible by 2"))
+{
+    return (arg % 2) == 0;
+}
+
+TEST(TestCalc, Case2)
+{
+    MockCalc mc;
+    EXPECT_CALL(mc, calc(Div2(), Div2()));
+
+    mc.calc(6, 10);
+    // mc.calc(7, 10);
+}
+```
+
+例2：
+
+```cpp
+MATCHER_P(DivN, n, (negation ? "is" : "is not") + 
+          std::string (" divisible by ") + std::to_string(n))
+{
+    return (arg % n) == 0;
+}
+
+TEST(TestCalc, Case3)
+{
+    MockCalc mc;
+    EXPECT_CALL(mc, calc(DivN(3), DivN(5)));
+
+    mc.calc(6, 10);
+}
+```
+
+```cpp
+[ RUN      ] TestCalc.Case3
+unknown file: Failure
+
+Unexpected mock function call - returning default value.
+    Function call: calc(7, 10)
+          Returns: 0
+Google Mock tried the following 1 expectation, but it didn't match:
+
+/home/will/lesson/gTest/39.define_matcher/define_matcher.cpp:82: EXPECT_CALL(mc, calc(DivN(3), DivN(5)))...
+  Expected arg #0: is not divisible by 3
+           Actual: 7
+         Expected: to be called once
+           Actual: never called - unsatisfied and active
+
+/home/will/lesson/gTest/39.define_matcher/define_matcher.cpp:82: Failure
+Actual function call count doesn't match EXPECT_CALL(mc, calc(DivN(3), DivN(5)))...
+         Expected: to be called once
+           Actual: never called - unsatisfied and active
+
+[  FAILED  ] TestCalc.Case3 (0 ms)
+```
+
+在gtest中预设了能够带10个参数的`MATCHER_P10(name, p0, ···, p9, description)`
+
+### 二十一、对象泄漏检测
+
+如果对象是用mock创建的，如何检测内存泄漏
+
+```cpp
+class Calc
+{
+public:
+    virtual int calc(int a, int b) = 0;
+    virtual ~Calc() = default;
+};
+```
+
+比起之前的代码，这里定义了一个虚析构，为了在对象销毁的时候，如果涉及到继承，则需要再基类中定义一个虚析构，防止出现只是析构了基类的部分而没有析构派生类部分的情况
+
+即：该虚析构函数，确保如果使用 `delete` 删除 `Calc` 类型的指针时，可以正确地调用派生类的析构函数。
+
+```cpp
+class MockCalc : public Calc
+{
+public:
+    MOCK_METHOD(int, calc, (int a, int b), (override));
+};
+
+int UseCalcAndDelete(Calc *c, int a, int b)
+{
+    int ret = c->calc(a, b); // 调用 calc 函数
+    delete c; // 删除对象，注意此时 c 是指向一个 Calc 类型的指针
+    return ret; // 返回计算结果
+}
+```
+
+`UseCalcAndDelete` 函数接收一个指向 `Calc` 类型的指针，调用该指针的 `calc` 函数，然后删除该对象，并返回计算结果。
+
+```cpp
+TEST(TestCalc, Case1) 
+{
+    MockCalc *pmc = new MockCalc();
+    EXPECT_CALL(*pmc, calc(2, 3))
+        .WillOnce(::testing::Return(5));
+    EXPECT_EQ(5, UseCalcAndDelete(pmc, 2, 3));
+
+    ::testing::Mock::VerifyAndClearExpectations(pmc);
+}
+```
+
+`::testing::Mock::VerifyAndClearExpectations(pmc);` 这行代码在 Google Mock 测试框架中有两个主要作用：**验证期望**和**清除期望**。
+
+- Google Mock 通过 `EXPECT_CALL` 设置期望，在测试运行过程中会检查是否按照预期调用了模拟的方法。如果期望没有被满足，测试会失败。调用 `VerifyAndClearExpectations` 会验证指定的模拟对象（在这里是 `pmc`）的所有期望是否被满足。
+
+    在这行代码执行时，Google Mock 会检查所有为 `pmc` 设置的期望：
+
+    - 是否按正确的顺序调用了 `calc(2, 3)` 方法。
+    - 是否所有的期望都得到了执行。
+
+    如果期望没有被满足，测试会失败，并显示出具体未满足的期望内容。通常，在测试结束时验证期望，以确保模拟方法被正确调用并且符合预期行为
+
+- `VerifyAndClearExpectations` 不仅会验证期望，还会清除已经设置的期望。这是为了确保每个测试用例都是独立的，不会被其他测试中的期望干扰。如果不清除期望，可能会导致后续的测试用例在执行时出错，因为期望会被保留在 `pmc` 上。
+
+    清除期望有助于：
+
+    - 保证每个测试用例从干净的状态开始。
+    - 避免期望被不小心重用或污染，造成难以追踪的错误。
+
+```bash
+Running main() from /home/will/lesson/gTest/googletest/googletest/src/gtest_main.cc
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from TestCalc
+[ RUN      ] TestCalc.Case1
+[       OK ] TestCalc.Case1 (0 ms)
+[----------] 1 test from TestCalc (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (0 ms total)
+[  PASSED  ] 1 test.
+```
+
+而如果注释掉上面代码中的`delete c;`，运行结果为：
+
+```cpp
+Running main() from /home/will/lesson/gTest/googletest/googletest/src/gtest_main.cc
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from TestCalc
+[ RUN      ] TestCalc.Case1
+[       OK ] TestCalc.Case1 (0 ms)
+[----------] 1 test from TestCalc (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (0 ms total)
+[  PASSED  ] 1 test.
+
+/home/will/lesson/gTest/40.free_obj/free_obj.cpp:28: ERROR: this mock object (used in test TestCalc.Case1) should be deleted but never is. Its address is @0x601392cfdb80.
+ERROR: 1 leaked mock object found at program exit. Expectations on a mock object are verified when the object is destructed. Leaking a mock means that its expectations aren't verified, which is usually a test bug. If you really intend to leak a mock, you can suppress this error using testing::Mock::AllowLeak(mock_object), or you may use a fake or stub instead of a mock.
+```
+
+用例同样是执行完毕了，但是下面还会有一些报错信息，提示在程序退出的时候，有一个泄漏的对象
+
+另外需要注意的是`::testing::Mock::VerifyAndClearExpectations(pmc);`不是按照顺序在那一行进行检测，也不是在那个用例结束的时候检测，而是会将`pmc`加入到一个全局的范围，在程序退出的时候做一个检测
+
+即，基于上面没有`delete c`的情况，在`VerifyAndClearExpectations`的下面进行`delete`，在用例执行完后也不会报内存泄漏的问题了
